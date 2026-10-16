@@ -25,3 +25,32 @@ body {
     text-wrap: balance;
   }
 }
+
+@keyframes tabFadeSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-tab-switch {
+  animation: tabFadeSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Utilitas scrollbar tersembunyi untuk navigasi mobile yang rapi */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
