@@ -7,10 +7,9 @@ services:
     container_name: knmp-oepuah-app
     restart: unless-stopped
     ports:
-      - "3002:3002"
+      - "3002:3000"
     environment:
       - NODE_ENV=production
-      - PORT=3002
     volumes:
       # Data Persistence: Menyimpan file JSON CMS ke folder ./data lokal di host/server
       # sehingga perubahan konten di panel admin TIDAK HILANG saat container di-restart/update
