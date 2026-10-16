@@ -130,7 +130,7 @@ export default function AdminSubdomainPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Masukkan password admin..."
-              className="w-full px-3.5 py-2 rounded-xl bg-[#F5F5F7] border border-black/[0.1] text-xs focus:outline-none focus:border-[#0071E3]"
+              className="w-full px-3.5 py-2 rounded-xl bg-[#F5F5F7] border border-black/[0.1] text-xs text-black focus:outline-none focus:border-[#0071E3]"
               required
             />
             {authError && <p className="text-[11px] text-red-600 mt-1.5">{authError}</p>}
