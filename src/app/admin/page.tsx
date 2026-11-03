@@ -234,7 +234,7 @@ export default function AdminSubdomainPage() {
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-zinc-900 flex flex-col antialiased">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-zinc-200 px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-7 h-7 rounded-lg bg-[#071A2E] text-white flex items-center justify-center shrink-0">
             <Anchor className="w-3.5 h-3.5" />
@@ -304,27 +304,24 @@ export default function AdminSubdomainPage() {
         <aside className="lg:col-span-3">
           <div className="flex lg:flex-col overflow-x-auto gap-1.5 pb-1 lg:pb-0 no-scrollbar">
             {[
-              { id: 'beranda', code: '01', label: 'Beranda, Metrik & Peta', short: 'Beranda' },
-              { id: 'produk', code: '02', label: 'Katalog Produk Laut', short: 'Produk' },
-              { id: 'mengenal', code: '03', label: 'Profil & Sekretariat', short: 'Profil' },
-              { id: 'pengurus', code: '04', label: 'Dewan Pengurus', short: 'Pengurus' },
-              { id: 'pengumuman', code: '05', label: 'Warta & Pengumuman', short: 'Warta' },
+              { id: 'beranda', label: 'Beranda, Metrik & Peta', short: 'Beranda' },
+              { id: 'produk', label: 'Katalog Produk Laut', short: 'Produk' },
+              { id: 'mengenal', label: 'Profil & Sekretariat', short: 'Profil' },
+              { id: 'pengurus', label: 'Dewan Pengurus', short: 'Pengurus' },
+              { id: 'pengumuman', label: 'Warta & Pengumuman', short: 'Warta' },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveSection(tab.id as typeof activeSection)}
-                className={`whitespace-nowrap text-left px-3.5 py-2.5 rounded-lg text-xs font-medium transition-colors shrink-0 flex items-center justify-between gap-2 ${
+                className={`whitespace-nowrap text-left px-3.5 py-2.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                   activeSection === tab.id
                     ? 'bg-[#071A2E] text-white font-semibold'
-                    : 'bg-white text-zinc-700 border border-zinc-200/90 hover:bg-zinc-100'
+                    : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
                 }`}
               >
-                <div>
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.short}</span>
-                </div>
-                <span className="font-mono text-[10px] opacity-70 tabular-nums">{tab.code}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.short}</span>
               </button>
             ))}
           </div>
@@ -573,8 +570,8 @@ export default function AdminSubdomainPage() {
                         className="p-4 rounded-xl border border-zinc-200 bg-[#FAF8F5] space-y-3"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-semibold text-zinc-900">
-                            #0{idx + 1} — {stat.label}
+                          <span className="text-xs font-semibold text-zinc-900">
+                            {stat.label}
                           </span>
                           <div className="flex items-center gap-3">
                             <span className="text-xs font-mono font-semibold tabular-nums text-sky-800">
@@ -1577,11 +1574,11 @@ export default function AdminSubdomainPage() {
               <div className="hidden sm:flex items-center gap-1">
                 {(
                   [
-                    { key: 'beranda', label: '01 Beranda' },
-                    { key: 'produk', label: '02 Produk' },
-                    { key: 'mengenal', label: '03 Profil' },
-                    { key: 'pengurus', label: '04 Pengurus' },
-                    { key: 'pengumuman', label: '05 Warta' },
+                    { key: 'beranda', label: 'Beranda' },
+                    { key: 'produk', label: 'Produk' },
+                    { key: 'mengenal', label: 'Profil' },
+                    { key: 'pengurus', label: 'Pengurus' },
+                    { key: 'pengumuman', label: 'Warta' },
                   ] as const
                 ).map((t) => (
                   <button
