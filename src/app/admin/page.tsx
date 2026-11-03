@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { CmsData, ProductItem, StatItem } from '@/types/cms';
 import {
+  Anchor,
   BarChart3,
   Check,
   ExternalLink,
@@ -24,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 
-// Helper pemformatan harga Rupiah otomatis tanpa perlu ketik manual "Rp" atau titik
+// Pemformatan harga Rupiah otomatis tanpa perlu ketik manual "Rp" atau titik
 function formatRupiahInput(value: string = ''): string {
   const digitsOnly = value.replace(/\D/g, '');
   if (!digitsOnly) return '';
@@ -33,7 +34,9 @@ function formatRupiahInput(value: string = ''): string {
 
 export default function AdminSubdomainPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [password, setPassword] = useState('');
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
   const [authError, setAuthError] = useState('');
   const [data, setData] = useState<CmsData | null>(null);
   const [activeSection, setActiveSection] = useState<
@@ -48,9 +51,22 @@ export default function AdminSubdomainPage() {
   >('beranda');
 
   useEffect(() => {
-    fetch('/api/cms')
+    // 1. Cek sesi aktif dari cookie HttpOnly server-side
+    fetch('/api/auth', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d: CmsData) => setData(d));
+      .then((res: { authenticated?: boolean }) => {
+        if (res.authenticated) {
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsCheckingSession(false));
+
+    // 2. Ambil data CMS terbaru
+    fetch('/api/cms', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: CmsData) => setData(d))
+      .catch(() => {});
   }, []);
 
   // Client-side image compression supaya RAM server 512MB tetap enteng
@@ -79,68 +95,134 @@ export default function AdminSubdomainPage() {
     });
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'MerahPutih2026') {
-      setIsAuthenticated(true);
-      setAuthError('');
-    } else {
-      setAuthError('Kata sandi otorisasi tidak valid.');
+    setAuthError('');
+    setIsSubmittingAuth(true);
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const payload = (await res.json()) as { authenticated?: boolean; error?: string };
+
+      if (res.ok && payload.authenticated) {
+        setIsAuthenticated(true);
+        setAuthError('');
+      } else {
+        setAuthError(payload.error || 'Kata sandi otorisasi tidak valid.');
+      }
+    } catch {
+      setAuthError('Gagal menghubungi server otorisasi.');
+    } finally {
+      setIsSubmittingAuth(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth', { method: 'DELETE' }).catch(() => {});
+    setIsAuthenticated(false);
+    setPassword('');
   };
 
   const handleSaveAll = async () => {
     if (!data) return;
     setSaveStatus('Menyimpan...');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (password) {
+      headers['x-admin-key'] = password;
+    }
+
     const res = await fetch('/api/cms', {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-key': password || 'MerahPutih2026',
-      },
+      headers,
       body: JSON.stringify(data),
     });
 
     if (res.ok) {
       setSaveStatus('Tersimpan');
       setTimeout(() => setSaveStatus(null), 2500);
+    } else if (res.status === 401) {
+      setSaveStatus('Sesi Berakhir');
+      setIsAuthenticated(false);
     } else {
       setSaveStatus('Gagal menyimpan');
     }
   };
 
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center text-xs font-mono uppercase tracking-wider text-zinc-500">
+        Memverifikasi Sesi Keamanan Admin...
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center p-5">
+      <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center p-5">
         <form
           onSubmit={handleLogin}
-          className="bg-white rounded-2xl p-8 max-w-sm w-full border border-black/[0.08] shadow-sm space-y-5"
+          className="bg-white rounded-xl p-7 sm:p-8 max-w-sm w-full border border-zinc-200/90 shadow-sm space-y-5"
         >
-          <div className="w-10 h-10 rounded-xl bg-[#0A2540] text-white flex items-center justify-center mx-auto">
-            <Lock className="w-5 h-5" />
+          <div className="flex items-center justify-between">
+            <div className="w-10 h-10 rounded-lg bg-[#071A2E] text-white flex items-center justify-center">
+              <Lock className="w-4 h-4" />
+            </div>
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
+              HMAC-SHA256 Protected
+            </span>
           </div>
-          <div className="text-center">
-            <h1 className="text-base font-semibold text-[#1D1D1F]">Panel CMS KNMP Oepuah</h1>
-            <p className="text-xs text-[#86868B] mt-1">Otorisasi Subdomain admin.knmp-oepuah.id</p>
-          </div>
+
           <div>
-            <label className="block text-xs font-medium text-[#1D1D1F] mb-1.5">Kata Sandi</label>
+            <h1 className="text-base font-semibold tracking-tight text-zinc-900">
+              Panel Pengelola KNMP Oepuah
+            </h1>
+            <p className="text-xs text-zinc-500 mt-1">
+              Otorisasi Server-Side Portal Koperasi Nelayan Merah Putih
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="admin-password"
+              className="block text-xs font-medium text-zinc-800 mb-1.5"
+            >
+              Kata Sandi Otorisasi
+            </label>
             <input
+              id="admin-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Masukkan password admin..."
-              className="w-full px-3.5 py-2 rounded-xl bg-[#F5F5F7] border border-black/[0.1] text-xs text-black focus:outline-none focus:border-[#0071E3]"
+              placeholder="Masukkan kata sandi admin..."
+              className="w-full px-3.5 py-2.5 rounded-lg bg-[#FAF8F5] border border-zinc-300 text-xs text-zinc-900 focus:outline-none focus:border-zinc-900"
               required
             />
-            {authError && <p className="text-[11px] text-red-600 mt-1.5">{authError}</p>}
+            {authError && (
+              <p className="text-[11px] font-medium text-red-600 mt-1.5">{authError}</p>
+            )}
           </div>
+
           <button
             type="submit"
-            className="w-full bg-[#0071E3] hover:bg-[#0077ED] text-white py-2 rounded-xl text-xs font-semibold transition"
+            disabled={isSubmittingAuth}
+            className="w-full bg-[#071A2E] hover:bg-[#0D2847] disabled:opacity-60 text-white py-2.5 rounded-lg text-xs font-semibold transition-colors duration-150 active:scale-[0.99]"
           >
-            Masuk ke Panel
+            {isSubmittingAuth ? 'Memverifikasi...' : 'Masuk ke Panel CMS'}
           </button>
+
+          <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-[11px] text-zinc-500">
+            <a href="/" className="hover:text-zinc-900 transition-colors">
+              ← Kembali ke Portal Publik
+            </a>
+            <span className="font-mono text-[10px]">Rate-Limited</span>
+          </div>
         </form>
       </div>
     );
@@ -148,27 +230,40 @@ export default function AdminSubdomainPage() {
 
   if (!data) {
     return (
-      <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center text-xs text-[#86868B]">
+      <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center text-xs font-mono text-zinc-500">
         Memuat data CMS...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-[#1D1D1F] flex flex-col antialiased">
+    <div className="min-h-screen bg-[#FAF8F5] text-zinc-900 flex flex-col antialiased">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-black/[0.08] px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-          <span className="text-xs sm:text-sm font-semibold text-[#1D1D1F] truncate">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-zinc-200 px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-7 h-7 rounded-lg bg-[#071A2E] text-white flex items-center justify-center shrink-0">
+            <Anchor className="w-3.5 h-3.5" />
+          </span>
+          <span className="text-xs sm:text-sm font-semibold tracking-tight text-zinc-900 truncate">
             <span className="sm:hidden">CMS KNMP</span>
             <span className="hidden sm:inline">CMS Panel — KNMP Oepuah</span>
           </span>
-          <span className="hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-            admin.knmp-oepuah.id
+          <span className="hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+            Sesi Aktif • Terlindungi
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-[#FAF8F5]"
+          >
+            <span>Lihat Portal</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+
           {/* Tombol Pratinjau Portal (Live Preview) */}
           <button
             type="button"
@@ -176,29 +271,31 @@ export default function AdminSubdomainPage() {
               setPreviewTab(activeSection);
               setShowLivePreview(true);
             }}
-            className="bg-white hover:bg-gray-50 text-[#1D1D1F] border border-black/[0.12] text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-full inline-flex items-center gap-1 sm:gap-1.5 transition shadow-sm"
+            className="bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-300 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-colors"
             title="Pratinjau Portal Langsung"
           >
-            <Eye className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />
-            <span className="hidden sm:inline">Pratinjau Portal</span>
+            <Eye className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+            <span className="hidden sm:inline">Pratinjau Draft</span>
             <span className="sm:hidden">Preview</span>
           </button>
 
           <button
+            type="button"
             onClick={handleSaveAll}
-            className="bg-[#0071E3] hover:bg-[#0077ED] text-white text-[11px] sm:text-xs font-semibold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full inline-flex items-center gap-1 sm:gap-1.5 transition shadow-sm"
+            className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-[11px] sm:text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-colors"
           >
             {saveStatus === 'Tersimpan' ? (
-              <Check className="w-3.5 h-3.5 shrink-0" />
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             ) : (
               <Save className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span>{saveStatus || 'Simpan'}</span>
+            <span>{saveStatus || 'Simpan Semua'}</span>
           </button>
 
           <button
-            onClick={() => setIsAuthenticated(false)}
-            className="text-xs text-[#86868B] hover:text-[#1D1D1F] p-1.5 sm:px-3 sm:py-1.5 rounded-full hover:bg-black/[0.05] transition"
+            type="button"
+            onClick={handleLogout}
+            className="text-xs text-zinc-600 hover:text-zinc-900 p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg hover:bg-zinc-100 border border-transparent hover:border-zinc-200 transition-colors inline-flex items-center"
             title="Keluar dari Panel Admin"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -207,75 +304,93 @@ export default function AdminSubdomainPage() {
         </div>
       </header>
 
-      <div className="max-w-[1180px] w-full mx-auto p-3 sm:p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-6">
-        {/* Navigation Sidebar (Horizontal Scroll Pills on Mobile, Sidebar on Desktop) */}
+      <div className="max-w-[1180px] w-full mx-auto p-3 sm:p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        {/* Navigation Sidebar */}
         <aside className="lg:col-span-3">
-          <div className="flex lg:flex-col overflow-x-auto gap-1.5 sm:gap-2 pb-1 lg:pb-0 no-scrollbar">
+          <div className="flex lg:flex-col overflow-x-auto gap-1.5 pb-1 lg:pb-0 no-scrollbar">
             {[
-              { id: 'beranda', label: '1. Beranda, Metrik & Peta', short: '1. Beranda' },
-              { id: 'pengurus', label: '2. Pengurus & Kontak', short: '2. Pengurus' },
-              { id: 'mengenal', label: '3. Mengenal Kami & Kantor', short: '3. Mengenal' },
-              { id: 'produk', label: '4. Produk Hasil Laut', short: '4. Produk' },
-              { id: 'pengumuman', label: '5. Pengumuman / Blog', short: '5. Warta Blog' },
+              { id: 'beranda', code: '01', label: 'Beranda, Metrik & Peta', short: 'Beranda' },
+              { id: 'produk', code: '02', label: 'Katalog Produk Laut', short: 'Produk' },
+              { id: 'mengenal', code: '03', label: 'Profil & Sekretariat', short: 'Profil' },
+              { id: 'pengurus', code: '04', label: 'Dewan Pengurus', short: 'Pengurus' },
+              { id: 'pengumuman', code: '05', label: 'Warta & Pengumuman', short: 'Warta' },
             ].map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveSection(tab.id as typeof activeSection)}
-                className={`whitespace-nowrap text-left px-3.5 py-2 lg:py-2.5 rounded-xl text-xs font-medium transition shrink-0 ${
+                className={`whitespace-nowrap text-left px-3.5 py-2.5 rounded-lg text-xs font-medium transition-colors shrink-0 flex items-center justify-between gap-2 ${
                   activeSection === tab.id
-                    ? 'bg-[#1D1D1F] text-white font-semibold shadow-sm'
-                    : 'bg-white lg:bg-transparent text-[#515154] border border-black/[0.08] lg:border-transparent hover:bg-black/[0.04]'
+                    ? 'bg-[#071A2E] text-white font-semibold'
+                    : 'bg-white text-zinc-700 border border-zinc-200/90 hover:bg-zinc-100'
                 }`}
               >
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.short}</span>
+                <div>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.short}</span>
+                </div>
+                <span className="font-mono text-[10px] opacity-70 tabular-nums">{tab.code}</span>
               </button>
             ))}
           </div>
 
-          <div className="hidden lg:block pt-4 px-3 text-[11px] text-[#86868B] leading-relaxed">
-            Semua perubahan tersimpan permanen di server dan langsung tampil di portal publik setelah Anda menekan tombol <strong>Simpan Semua</strong>.
+          <div className="hidden lg:block mt-4 p-3.5 rounded-xl bg-white border border-zinc-200/90 text-[11px] text-zinc-600 leading-relaxed space-y-2">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-900 font-semibold">
+              Mode Single-Page (SPA)
+            </div>
+            <p>
+              Seluruh seksi ditampilkan berurutan dalam satu halaman utuh di portal publik. Tekan{' '}
+              <strong>Simpan Semua</strong> untuk memperbarui data secara instan.
+            </p>
           </div>
         </aside>
 
-        {/* Content Area dengan Transisi Halus (Smooth Tab Animation) */}
-        <section className="lg:col-span-9 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 border border-black/[0.08] shadow-sm">
-          <div key={activeSection} className="animate-tab-switch space-y-6 sm:space-y-8">
+        {/* Content Area */}
+        <section className="lg:col-span-9 bg-white rounded-xl p-4 sm:p-6 lg:p-7 border border-zinc-200/90 shadow-sm">
+          <div key={activeSection} className="animate-tab-switch space-y-6">
             {/* ================= 1. EDITOR BERANDA & METRIK ================= */}
             {activeSection === 'beranda' && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold text-[#1D1D1F]">Pengaturan Beranda & Hero</h2>
-                  <p className="text-xs text-[#86868B] mt-0.5">
+                <div className="border-b border-zinc-200 pb-3">
+                  <h2 className="text-base font-semibold text-zinc-900">
+                    Pengaturan Beranda & Hero
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">
                     Sesuaikan teks hero, banner gambar/vektor, serta tautan informasi ekosistem laut.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Sub-Label Atas (Eyebrow)</label>
+                    <label className="block text-xs font-medium text-zinc-800 mb-1">
+                      Sub-Label Atas (Eyebrow)
+                    </label>
                     <input
                       type="text"
                       value={data.beranda.eyebrow}
                       onChange={(e) =>
                         setData({ ...data, beranda: { ...data.beranda, eyebrow: e.target.value } })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Judul Utama Beranda</label>
+                    <label className="block text-xs font-medium text-zinc-800 mb-1">
+                      Judul Utama Beranda
+                    </label>
                     <textarea
                       rows={2}
                       value={data.beranda.title}
                       onChange={(e) =>
                         setData({ ...data, beranda: { ...data.beranda, title: e.target.value } })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs font-medium"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Deskripsi Narasi Hero</label>
+                    <label className="block text-xs font-medium text-zinc-800 mb-1">
+                      Deskripsi Narasi Hero
+                    </label>
                     <textarea
                       rows={3}
                       value={data.beranda.description}
@@ -285,22 +400,19 @@ export default function AdminSubdomainPage() {
                           beranda: { ...data.beranda, description: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs leading-relaxed"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs leading-relaxed"
                     />
                   </div>
 
                   {/* Hyperlink Visual Card Header Settings */}
-                  <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-blue-900">
-                      <Fish className="w-4 h-4 text-[#0071E3]" />
+                  <div className="p-4 rounded-xl bg-[#FAF8F5] border border-zinc-200 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
+                      <Fish className="w-4 h-4 text-sky-700" />
                       <span>Tautan & Header Kartu Ekosistem Laut (Bagian Kanan Hero)</span>
                     </div>
-                    <p className="text-[11px] text-blue-800/80">
-                      Bagian ini akan menjadi hyperlink aktif di halaman depan. Pengunjung dapat mengkliknya untuk membuka Google Maps atau halaman referensi.
-                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                        <label className="block text-[11px] font-medium text-zinc-700 mb-1">
                           Judul Header Kartu
                         </label>
                         <input
@@ -312,12 +424,11 @@ export default function AdminSubdomainPage() {
                               beranda: { ...data.beranda, heroCardTitle: e.target.value },
                             })
                           }
-                          placeholder="Contoh: Ekosistem Perairan Laut Sawu — Oepuah"
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                        <label className="block text-[11px] font-medium text-zinc-700 mb-1">
                           Koordinat / Teks Lokasi
                         </label>
                         <input
@@ -329,41 +440,43 @@ export default function AdminSubdomainPage() {
                               beranda: { ...data.beranda, heroCardCoords: e.target.value },
                             })
                           }
-                          placeholder="09°09'S 124°35'E"
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono tabular-nums"
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                        <label className="block text-[11px] font-medium text-zinc-700 mb-1">
                           URL Hyperlink (Tautan Google Maps / Dokumen)
                         </label>
                         <input
                           type="text"
-                          value={data.beranda.heroCardLink ?? 'https://maps.google.com/?q=-9.15,124.58'}
+                          value={
+                            data.beranda.heroCardLink ?? 'https://maps.google.com/?q=-9.15,124.58'
+                          }
                           onChange={(e) =>
                             setData({
                               ...data,
                               beranda: { ...data.beranda, heroCardLink: e.target.value },
                             })
                           }
-                          placeholder="https://maps.google.com/?q=-9.15,124.58"
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Hero Image Settings */}
-                  <div className="p-4 rounded-xl bg-[#F5F5F7] space-y-2 border border-black/[0.05]">
+                  <div className="p-4 rounded-xl bg-[#FAF8F5] space-y-2 border border-zinc-200">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold">Ganti Gambar Hero dengan Foto Khusus</label>
+                      <label className="text-xs font-semibold text-zinc-900">
+                        Ganti Gambar Hero dengan Foto Khusus
+                      </label>
                       {data.beranda.heroImageUrl && (
                         <button
                           type="button"
                           onClick={() =>
                             setData({ ...data, beranda: { ...data.beranda, heroImageUrl: '' } })
                           }
-                          className="text-[11px] text-[#0071E3] hover:underline"
+                          className="text-[11px] text-sky-700 font-medium hover:underline"
                         >
                           Kembalikan ke Ilustrasi Vektor Ekosistem Laut
                         </button>
@@ -384,22 +497,19 @@ export default function AdminSubdomainPage() {
                       }}
                       className="text-xs"
                     />
-                    <p className="text-[11px] text-[#86868B]">
-                      Jika dikosongkan, halaman akan otomatis menampilkan ilustrasi vektor ikan laut interaktif yang estetik dan super ringan.
-                    </p>
                   </div>
                 </div>
 
-                {/* SECTION METRIK OPERASIONAL (FLEKSIBEL TANPA GRAFIK) */}
-                <div className="pt-4 border-t border-black/[0.08] space-y-4">
+                {/* SECTION METRIK OPERASIONAL */}
+                <div className="pt-4 border-t border-zinc-200 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                        <BarChart3 className="w-4 h-4 text-[#0071E3]" />
+                      <h3 className="text-sm font-semibold flex items-center gap-1.5 text-zinc-900">
+                        <BarChart3 className="w-4 h-4 text-sky-700" />
                         <span>Data Metrik Operasional Pesisir</span>
                       </h3>
-                      <p className="text-xs text-[#86868B]">
-                        Kelola kartu statistik capaian koperasi. Anda bebas mengubah nilai, satuan, serta menambah atau menghapus kartu metrik.
+                      <p className="text-xs text-zinc-500">
+                        Kelola kartu statistik capaian koperasi dengan format angka presisi.
                       </p>
                     </div>
 
@@ -408,11 +518,11 @@ export default function AdminSubdomainPage() {
                       onClick={() => {
                         const newCard: StatItem = {
                           id: Date.now().toString(),
-                          label: 'Kas KNMP Oepuah',
-                          value: 'Rp 148.500.000',
-                          unit: '',
-                          detail: 'Likuiditas simpan pinjam & modal es nelayan',
-                          trendLabel: 'Kas Lancar & Transparan',
+                          label: 'Metrik Baru',
+                          value: '100',
+                          unit: 'Unit',
+                          detail: 'Keterangan operasional koperasi',
+                          trendLabel: 'Aktif',
                         };
                         setData({
                           ...data,
@@ -422,7 +532,7 @@ export default function AdminSubdomainPage() {
                           },
                         });
                       }}
-                      className="bg-[#1D1D1F] hover:bg-black text-white text-xs px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 self-start shadow-sm"
+                      className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-xs px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 self-start"
                     >
                       <Plus className="w-3.5 h-3.5" /> Tambah Kartu Metrik
                     </button>
@@ -435,13 +545,18 @@ export default function AdminSubdomainPage() {
                         type="text"
                         value={data.beranda.statsTitle}
                         onChange={(e) =>
-                          setData({ ...data, beranda: { ...data.beranda, statsTitle: e.target.value } })
+                          setData({
+                            ...data,
+                            beranda: { ...data.beranda, statsTitle: e.target.value },
+                          })
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                        className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 text-xs"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1">Subjudul Seksi Metrik</label>
+                      <label className="block text-xs font-medium mb-1">
+                        Subjudul Seksi Metrik
+                      </label>
                       <input
                         type="text"
                         value={data.beranda.statsSubtitle}
@@ -451,34 +566,37 @@ export default function AdminSubdomainPage() {
                             beranda: { ...data.beranda, statsSubtitle: e.target.value },
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                        className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 text-xs"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-4 pt-2">
+                  <div className="space-y-3 pt-2">
                     {data.beranda.stats.map((stat, idx) => (
                       <div
                         key={stat.id}
-                        className="p-4 rounded-xl border border-black/[0.08] bg-[#FAFAFC] space-y-3"
+                        className="p-4 rounded-xl border border-zinc-200 bg-[#FAF8F5] space-y-3"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-[#1D1D1F]">
-                            Kartu Metrik #{idx + 1}: {stat.label}
+                          <span className="text-xs font-mono font-semibold text-zinc-900">
+                            #0{idx + 1} — {stat.label}
                           </span>
                           <div className="flex items-center gap-3">
-                            <span className="text-xs font-semibold text-[#0071E3]">
-                              {stat.value}{stat.unit ? ` ${stat.unit}` : ''}
+                            <span className="text-xs font-mono font-semibold tabular-nums text-sky-800">
+                              {stat.value}
+                              {stat.unit ? ` ${stat.unit}` : ''}
                             </span>
                             {data.beranda.stats.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => {
                                   const updated = data.beranda.stats.filter((_, i) => i !== idx);
-                                  setData({ ...data, beranda: { ...data.beranda, stats: updated } });
+                                  setData({
+                                    ...data,
+                                    beranda: { ...data.beranda, stats: updated },
+                                  });
                                 }}
-                                className="text-xs text-red-500 hover:text-red-700 inline-flex items-center gap-1"
-                                title="Hapus Kartu Metrik"
+                                className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1"
                               >
                                 <Trash2 className="w-3.5 h-3.5" /> Hapus
                               </button>
@@ -488,7 +606,7 @@ export default function AdminSubdomainPage() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                           <div className="sm:col-span-5">
-                            <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                            <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                               Label / Nama Metrik
                             </label>
                             <input
@@ -499,13 +617,12 @@ export default function AdminSubdomainPage() {
                                 updated[idx].label = e.target.value;
                                 setData({ ...data, beranda: { ...data.beranda, stats: updated } });
                               }}
-                              placeholder="Contoh: Kas KNMP Oepuah"
-                              className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs font-medium"
+                              className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-medium"
                             />
                           </div>
 
                           <div className="sm:col-span-4">
-                            <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                            <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                               Nilai Angka / Jumlah
                             </label>
                             <input
@@ -516,14 +633,13 @@ export default function AdminSubdomainPage() {
                                 updated[idx].value = e.target.value;
                                 setData({ ...data, beranda: { ...data.beranda, stats: updated } });
                               }}
-                              placeholder="Contoh: 142 atau Rp 148.500.000"
-                              className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs font-semibold"
+                              className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono font-semibold tabular-nums"
                             />
                           </div>
 
                           <div className="sm:col-span-3">
-                            <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                              Satuan (Boleh Kosong)
+                            <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                              Satuan (Opsional)
                             </label>
                             <input
                               type="text"
@@ -533,16 +649,15 @@ export default function AdminSubdomainPage() {
                                 updated[idx].unit = e.target.value;
                                 setData({ ...data, beranda: { ...data.beranda, stats: updated } });
                               }}
-                              placeholder="Unit / Ton / KK / °C"
-                              className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                             />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                              Keterangan Detail Bawah
+                            <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                              Keterangan Detail
                             </label>
                             <input
                               type="text"
@@ -552,14 +667,13 @@ export default function AdminSubdomainPage() {
                                 updated[idx].detail = e.target.value;
                                 setData({ ...data, beranda: { ...data.beranda, stats: updated } });
                               }}
-                              placeholder="Keterangan singkat capaian..."
-                              className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                             />
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                              Label Status / Catatan (Opsional)
+                            <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                              Label Status / Catatan
                             </label>
                             <input
                               type="text"
@@ -569,8 +683,7 @@ export default function AdminSubdomainPage() {
                                 updated[idx].trendLabel = e.target.value;
                                 setData({ ...data, beranda: { ...data.beranda, stats: updated } });
                               }}
-                              placeholder="Contoh: +12 unit thn ini / Kas Lancar"
-                              className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                             />
                           </div>
                         </div>
@@ -584,14 +697,17 @@ export default function AdminSubdomainPage() {
             {/* ================= 2. EDITOR PENGURUS ================= */}
             {activeSection === 'pengurus' && (
               <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
                   <div>
-                    <h2 className="text-base font-semibold">Daftar Pengurus & Kontak</h2>
-                    <p className="text-xs text-[#86868B] mt-0.5">
-                      Nomor telepon / WhatsApp dan email bersifat opsional (bebas diisi atau dikosongkan).
+                    <h2 className="text-base font-semibold text-zinc-900">
+                      Daftar Pengurus & Kontak
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Nomor telepon / WhatsApp dan email bersifat opsional.
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() =>
                       setData({
                         ...data,
@@ -612,7 +728,7 @@ export default function AdminSubdomainPage() {
                         },
                       })
                     }
-                    className="bg-[#1D1D1F] hover:bg-black text-white text-xs px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 self-start"
+                    className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-xs px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 self-start"
                   >
                     <Plus className="w-3.5 h-3.5" /> Tambah Pengurus
                   </button>
@@ -630,7 +746,7 @@ export default function AdminSubdomainPage() {
                           pengurusSection: { ...data.pengurusSection, title: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 text-xs"
                     />
                   </div>
                   <div>
@@ -644,7 +760,7 @@ export default function AdminSubdomainPage() {
                           pengurusSection: { ...data.pengurusSection, subtitle: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 text-xs"
                     />
                   </div>
                 </div>
@@ -653,19 +769,17 @@ export default function AdminSubdomainPage() {
                   {data.pengurusSection.items.map((person, idx) => (
                     <div
                       key={person.id}
-                      className="p-4 rounded-xl border border-black/[0.08] flex flex-col sm:flex-row gap-4 items-start bg-[#FAFAFC]"
+                      className="p-4 rounded-xl border border-zinc-200 flex flex-col sm:flex-row gap-4 items-start bg-[#FAF8F5]"
                     >
-                      <div className="relative group shrink-0">
-                        <img
-                          src={person.photoUrl}
-                          alt={person.name}
-                          className="w-20 h-20 rounded-xl object-cover bg-gray-100"
-                        />
-                      </div>
+                      <img
+                        src={person.photoUrl}
+                        alt={person.name}
+                        className="w-20 h-20 rounded-lg object-cover bg-zinc-200 border border-zinc-300 shrink-0"
+                      />
 
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
                         <div>
-                          <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                          <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                             Nama Lengkap
                           </label>
                           <input
@@ -679,12 +793,11 @@ export default function AdminSubdomainPage() {
                                 pengurusSection: { ...data.pengurusSection, items: updated },
                               });
                             }}
-                            placeholder="Nama Pengurus"
-                            className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs font-medium"
+                            className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-medium"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                          <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                             Jabatan Organisasi
                           </label>
                           <input
@@ -698,13 +811,12 @@ export default function AdminSubdomainPage() {
                                 pengurusSection: { ...data.pengurusSection, items: updated },
                               });
                             }}
-                            placeholder="Jabatan Pengurus"
-                            className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                            className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                            Nomor Telepon / WA (Bebas / Opsional)
+                          <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                            Nomor Telepon / WA (Opsional)
                           </label>
                           <input
                             type="text"
@@ -717,12 +829,11 @@ export default function AdminSubdomainPage() {
                                 pengurusSection: { ...data.pengurusSection, items: updated },
                               });
                             }}
-                            placeholder="Contoh: +62 812-3456-7890 (Boleh kosong)"
-                            className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                            className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono tabular-nums"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                          <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                             Alamat Email (Opsional)
                           </label>
                           <input
@@ -736,13 +847,12 @@ export default function AdminSubdomainPage() {
                                 pengurusSection: { ...data.pengurusSection, items: updated },
                               });
                             }}
-                            placeholder="email@knmp-oepuah.id (Boleh kosong)"
-                            className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                            className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                           />
                         </div>
 
                         <div className="sm:col-span-2">
-                          <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                          <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                             URL Foto / Gambar
                           </label>
                           <input
@@ -756,13 +866,12 @@ export default function AdminSubdomainPage() {
                                 pengurusSection: { ...data.pengurusSection, items: updated },
                               });
                             }}
-                            placeholder="https://..."
-                            className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                            className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                           />
                         </div>
 
                         <div className="sm:col-span-2 flex items-center justify-between pt-1">
-                          <label className="text-xs text-[#0071E3] font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
+                          <label className="text-xs text-sky-700 font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
                             <Upload className="w-3.5 h-3.5" /> Unggah Foto dari Perangkat
                             <input
                               type="file"
@@ -783,6 +892,7 @@ export default function AdminSubdomainPage() {
                             />
                           </label>
                           <button
+                            type="button"
                             onClick={() => {
                               const updated = data.pengurusSection.items.filter((_, i) => i !== idx);
                               setData({
@@ -805,16 +915,18 @@ export default function AdminSubdomainPage() {
             {/* ================= 3. EDITOR MENGENAL KAMI ================= */}
             {activeSection === 'mengenal' && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold">Edit Lengkap &ldquo;Mengenal Kami&rdquo;</h2>
-                  <p className="text-xs text-[#86868B] mt-0.5">
+                <div className="border-b border-zinc-200 pb-3">
+                  <h2 className="text-base font-semibold text-zinc-900">
+                    Profil Kawasan & Sekretariat
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">
                     Ubah narasi profil, visi misi, foto kawasan, serta alamat dan nomor kontak sekretariat.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Judul Halaman Profil</label>
+                    <label className="block text-xs font-medium mb-1">Judul Seksi Profil</label>
                     <input
                       type="text"
                       value={data.mengenalKami.title}
@@ -824,11 +936,11 @@ export default function AdminSubdomainPage() {
                           mengenalKami: { ...data.mengenalKami, title: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs font-medium"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Subjudul Halaman</label>
+                    <label className="block text-xs font-medium mb-1">Subjudul Profil</label>
                     <input
                       type="text"
                       value={data.mengenalKami.subtitle}
@@ -838,14 +950,14 @@ export default function AdminSubdomainPage() {
                           mengenalKami: { ...data.mengenalKami, subtitle: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs"
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium mb-1">
-                    Narasi Kawasan Pesisir & Koperasi (Mendukung Multi-paragraf)
+                    Narasi Kawasan Pesisir & Koperasi
                   </label>
                   <textarea
                     rows={5}
@@ -856,7 +968,7 @@ export default function AdminSubdomainPage() {
                         mengenalKami: { ...data.mengenalKami, narrative: e.target.value },
                       })
                     }
-                    className="w-full px-3 py-2 rounded-lg border text-xs leading-relaxed"
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs leading-relaxed"
                   />
                 </div>
 
@@ -872,7 +984,7 @@ export default function AdminSubdomainPage() {
                           mengenalKami: { ...data.mengenalKami, vision: e.target.value },
                         })
                       }
-                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs"
                     />
                   </div>
 
@@ -890,7 +1002,7 @@ export default function AdminSubdomainPage() {
                             },
                           })
                         }
-                        className="text-[11px] text-[#0071E3] hover:underline inline-flex items-center gap-1"
+                        className="text-[11px] text-sky-700 font-medium hover:underline inline-flex items-center gap-1"
                       >
                         <Plus className="w-3 h-3" /> Tambah Misi
                       </button>
@@ -910,18 +1022,20 @@ export default function AdminSubdomainPage() {
                                 mengenalKami: { ...data.mengenalKami, missions: updated },
                               });
                             }}
-                            className="flex-1 px-3 py-1.5 rounded-lg border text-xs"
+                            className="flex-1 px-3 py-1.5 rounded-lg border border-zinc-300 text-xs"
                           />
                           <button
                             type="button"
                             onClick={() => {
-                              const updated = data.mengenalKami.missions.filter((_, i) => i !== mIdx);
+                              const updated = data.mengenalKami.missions.filter(
+                                (_, i) => i !== mIdx
+                              );
                               setData({
                                 ...data,
                                 mengenalKami: { ...data.mengenalKami, missions: updated },
                               });
                             }}
-                            className="text-red-500 hover:text-red-700 p-1"
+                            className="text-red-600 hover:text-red-700 p-1"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -932,14 +1046,14 @@ export default function AdminSubdomainPage() {
                 </div>
 
                 {/* Foto Kawasan & Info Kontak Sekretariat */}
-                <div className="p-4 rounded-xl bg-[#FAFAFC] border border-black/[0.08] space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[#0071E3] flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" />
+                <div className="p-4 rounded-xl bg-[#FAF8F5] border border-zinc-200 space-y-4">
+                  <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-900 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-sky-700" />
                     <span>Sekretariat & Informasi Kontak Kantor</span>
                   </h3>
 
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                    <div className="sm:col-span-4 aspect-[4/3] rounded-xl overflow-hidden border border-black/[0.08] bg-gray-100">
+                    <div className="sm:col-span-4 aspect-[4/3] rounded-lg overflow-hidden border border-zinc-300 bg-zinc-200">
                       <img
                         src={data.mengenalKami.imageUrl}
                         alt="Sekretariat"
@@ -948,7 +1062,7 @@ export default function AdminSubdomainPage() {
                     </div>
                     <div className="sm:col-span-8 space-y-2">
                       <div>
-                        <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                        <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                           URL Foto Sekretariat / Kawasan Pesisir
                         </label>
                         <input
@@ -960,10 +1074,10 @@ export default function AdminSubdomainPage() {
                               mengenalKami: { ...data.mengenalKami, imageUrl: e.target.value },
                             })
                           }
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                         />
                       </div>
-                      <label className="text-xs text-[#0071E3] font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
+                      <label className="text-xs text-sky-700 font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
                         <Upload className="w-3.5 h-3.5" /> Unggah Foto Kawasan dari Perangkat
                         <input
                           type="file"
@@ -986,7 +1100,7 @@ export default function AdminSubdomainPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                     <div className="sm:col-span-3">
-                      <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                      <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                         Alamat Lengkap Sekretariat Koperasi
                       </label>
                       <input
@@ -998,11 +1112,11 @@ export default function AdminSubdomainPage() {
                             mengenalKami: { ...data.mengenalKami, address: e.target.value },
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                      <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                         Nomor Telepon / WhatsApp Resmi
                       </label>
                       <input
@@ -1014,11 +1128,11 @@ export default function AdminSubdomainPage() {
                             mengenalKami: { ...data.mengenalKami, phone: e.target.value },
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono tabular-nums"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-medium text-[#515154] mb-1">
+                      <label className="block text-[11px] font-medium text-zinc-600 mb-1">
                         Alamat Email Resmi
                       </label>
                       <input
@@ -1030,7 +1144,7 @@ export default function AdminSubdomainPage() {
                             mengenalKami: { ...data.mengenalKami, email: e.target.value },
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                       />
                     </div>
                   </div>
@@ -1041,14 +1155,18 @@ export default function AdminSubdomainPage() {
             {/* ================= 4. EDITOR PRODUK (HARGA OTOMATIS RP) ================= */}
             {activeSection === 'produk' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
                   <div>
-                    <h2 className="text-base font-semibold">Katalog Produk Hasil Laut</h2>
-                    <p className="text-xs text-[#86868B] mt-0.5">
-                      Kelola komoditas tangkapan. Harga otomatis diformat dengan awalan <strong>Rp</strong> dan pemisah ribuan.
+                    <h2 className="text-base font-semibold text-zinc-900">
+                      Katalog Produk Hasil Laut
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Kelola komoditas tangkapan. Harga otomatis diformat dengan awalan{' '}
+                      <strong>Rp</strong> dan pemisah ribuan.
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() =>
                       setData({
                         ...data,
@@ -1060,7 +1178,7 @@ export default function AdminSubdomainPage() {
                               id: Date.now().toString(),
                               name: 'Komoditas Baru',
                               latinName: 'Spesies Laut',
-                              category: 'Ikan Segar',
+                              category: 'Pelagis',
                               pricePerKg: 'Rp 50.000',
                               availability: 'Tersedia',
                               description: 'Deskripsi tangkapan nelayan Oepuah.',
@@ -1071,7 +1189,7 @@ export default function AdminSubdomainPage() {
                         },
                       })
                     }
-                    className="bg-[#1D1D1F] hover:bg-black text-white text-xs px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5"
+                    className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-xs px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" /> Tambah Produk
                   </button>
@@ -1080,7 +1198,7 @@ export default function AdminSubdomainPage() {
                 {data.produkSection.items.map((prd, idx) => (
                   <div
                     key={prd.id}
-                    className="p-4 rounded-xl border border-black/[0.08] space-y-2.5 bg-[#FAFAFC]"
+                    className="p-4 rounded-xl border border-zinc-200 space-y-2.5 bg-[#FAF8F5]"
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                       <input
@@ -1095,7 +1213,7 @@ export default function AdminSubdomainPage() {
                           });
                         }}
                         placeholder="Nama Ikan"
-                        className="px-3 py-1.5 rounded-lg border bg-white text-xs font-semibold"
+                        className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-semibold"
                       />
                       <input
                         type="text"
@@ -1109,7 +1227,7 @@ export default function AdminSubdomainPage() {
                           });
                         }}
                         placeholder="Nama Latin"
-                        className="px-3 py-1.5 rounded-lg border bg-white text-xs italic"
+                        className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs italic"
                       />
                       <input
                         type="text"
@@ -1123,12 +1241,11 @@ export default function AdminSubdomainPage() {
                           });
                         }}
                         placeholder="Kategori"
-                        className="px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                       />
 
-                      {/* INPUT HARGA OTOMATIS: User tinggal ketik angka, otomatis ada Rp dan titik ribuan */}
-                      <div className="flex rounded-lg border border-black/[0.12] bg-white overflow-hidden focus-within:border-[#0071E3] focus-within:ring-1 focus-within:ring-[#0071E3]">
-                        <span className="inline-flex items-center px-2.5 bg-gray-100 text-[11px] font-semibold text-gray-600 border-r border-black/[0.08] select-none">
+                      <div className="flex rounded-lg border border-zinc-300 bg-white overflow-hidden focus-within:border-zinc-900">
+                        <span className="inline-flex items-center px-2.5 bg-zinc-100 text-[11px] font-mono font-semibold text-zinc-700 border-r border-zinc-200 select-none">
                           Rp
                         </span>
                         <input
@@ -1144,9 +1261,9 @@ export default function AdminSubdomainPage() {
                             });
                           }}
                           placeholder="100.000"
-                          className="w-full px-2.5 py-1.5 bg-transparent text-xs font-semibold focus:outline-none"
+                          className="w-full px-2.5 py-1.5 bg-transparent text-xs font-mono font-semibold tabular-nums focus:outline-none"
                         />
-                        <span className="inline-flex items-center px-2 text-[10px] text-gray-400 bg-gray-50 border-l border-black/[0.06] select-none">
+                        <span className="inline-flex items-center px-2 text-[10px] font-mono text-zinc-500 bg-zinc-50 border-l border-zinc-200 select-none">
                           /kg
                         </span>
                       </div>
@@ -1163,7 +1280,7 @@ export default function AdminSubdomainPage() {
                             produkSection: { ...data.produkSection, items: updated },
                           });
                         }}
-                        className="px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                       >
                         <option value="Tersedia">Tersedia</option>
                         <option value="Terbatas">Terbatas</option>
@@ -1182,7 +1299,7 @@ export default function AdminSubdomainPage() {
                           });
                         }}
                         placeholder="URL Foto Ikan"
-                        className="sm:col-span-3 px-3 py-1.5 rounded-lg border bg-white text-xs"
+                        className="sm:col-span-3 px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                       />
                     </div>
 
@@ -1198,11 +1315,11 @@ export default function AdminSubdomainPage() {
                         });
                       }}
                       placeholder="Deskripsi komoditas..."
-                      className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                     />
 
                     <div className="flex items-center justify-between pt-1">
-                      <label className="text-xs text-[#0071E3] font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
+                      <label className="text-xs text-sky-700 font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
                         <Upload className="w-3.5 h-3.5" /> Ganti Foto Ikan dari Perangkat
                         <input
                           type="file"
@@ -1223,6 +1340,7 @@ export default function AdminSubdomainPage() {
                         />
                       </label>
                       <button
+                        type="button"
                         onClick={() => {
                           const updated = data.produkSection.items.filter((_, i) => i !== idx);
                           setData({
@@ -1230,9 +1348,9 @@ export default function AdminSubdomainPage() {
                             produkSection: { ...data.produkSection, items: updated },
                           });
                         }}
-                        className="text-xs text-red-600 hover:text-red-700"
+                        className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1"
                       >
-                        Hapus Produk
+                        <Trash2 className="w-3.5 h-3.5" /> Hapus Produk
                       </button>
                     </div>
                   </div>
@@ -1243,14 +1361,17 @@ export default function AdminSubdomainPage() {
             {/* ================= 5. EDITOR PENGUMUMAN / BLOG ================= */}
             {activeSection === 'pengumuman' && (
               <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
                   <div>
-                    <h2 className="text-base font-semibold">Pengumuman & Warta Blog</h2>
-                    <p className="text-xs text-[#86868B] mt-0.5">
-                      Buat pengumuman resmi atau artikel berita komunitas dengan banner foto seperti blog.
+                    <h2 className="text-base font-semibold text-zinc-900">
+                      Pengumuman & Warta Resmi
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Buat pengumuman resmi atau artikel berita komunitas dengan banner foto.
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() =>
                       setData({
                         ...data,
@@ -1260,9 +1381,9 @@ export default function AdminSubdomainPage() {
                             {
                               id: Date.now().toString(),
                               title: 'Judul Warta / Pengumuman Baru',
-                              date: 'Oktober 2026',
+                              date: 'November 2026',
                               category: 'Operasional',
-                              summary: 'Ringkasan singkat yang menarik minat pembaca.',
+                              summary: 'Ringkasan singkat yang tampil di kartu halaman utama.',
                               content:
                                 'Tulis isi maklumat lengkap atau artikel berita di sini. Mendukung multi-paragraf dan rincian informasi penting.',
                               imageUrl:
@@ -1273,21 +1394,20 @@ export default function AdminSubdomainPage() {
                         },
                       })
                     }
-                    className="bg-[#1D1D1F] hover:bg-black text-white text-xs px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 self-start"
+                    className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-xs px-3.5 py-2 rounded-lg inline-flex items-center gap-1.5 self-start"
                   >
                     <Plus className="w-3.5 h-3.5" /> Tambah Warta Baru
                   </button>
                 </div>
 
-                <div className="space-y-6 pt-2">
+                <div className="space-y-5 pt-2">
                   {data.pengumumanSection.items.map((ann, idx) => (
                     <div
                       key={ann.id}
-                      className="p-5 rounded-2xl border border-black/[0.08] bg-[#FAFAFC] space-y-3.5"
+                      className="p-4 sm:p-5 rounded-xl border border-zinc-200 bg-[#FAF8F5] space-y-3.5"
                     >
                       <div className="flex flex-col sm:flex-row gap-4 items-start">
-                        {/* Thumbnail Preview */}
-                        <div className="w-full sm:w-44 h-28 rounded-xl overflow-hidden bg-gray-200 border border-black/[0.08] shrink-0 relative">
+                        <div className="w-full sm:w-44 h-28 rounded-lg overflow-hidden bg-zinc-200 border border-zinc-300 shrink-0 relative">
                           {ann.imageUrl ? (
                             <img
                               src={ann.imageUrl}
@@ -1295,14 +1415,13 @@ export default function AdminSubdomainPage() {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 text-[10px]">
-                              <ImageIcon className="w-6 h-6 mb-1 opacity-50" />
-                              <span>Tanpa Banner Foto</span>
+                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 text-[10px] font-mono">
+                              <ImageIcon className="w-5 h-5 mb-1 opacity-60" />
+                              <span>Tanpa Banner</span>
                             </div>
                           )}
                         </div>
 
-                        {/* Title & Metadata Inputs */}
                         <div className="flex-1 space-y-2.5 w-full">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input
@@ -1317,7 +1436,7 @@ export default function AdminSubdomainPage() {
                                 });
                               }}
                               placeholder="Judul Pengumuman"
-                              className="sm:col-span-2 px-3 py-1.5 rounded-lg border bg-white text-xs font-semibold"
+                              className="sm:col-span-2 px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-semibold"
                             />
                             <input
                               type="text"
@@ -1330,8 +1449,8 @@ export default function AdminSubdomainPage() {
                                   pengumumanSection: { ...data.pengumumanSection, items: updated },
                                 });
                               }}
-                              placeholder="Kategori (mis: Operasional)"
-                              className="px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              placeholder="Kategori"
+                              className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                             />
                           </div>
 
@@ -1348,7 +1467,7 @@ export default function AdminSubdomainPage() {
                                 });
                               }}
                               placeholder="Tanggal Rilis"
-                              className="px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              className="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono tabular-nums"
                             />
                             <input
                               type="text"
@@ -1362,15 +1481,15 @@ export default function AdminSubdomainPage() {
                                 });
                               }}
                               placeholder="URL Banner Foto (opsional)"
-                              className="sm:col-span-2 px-3 py-1.5 rounded-lg border bg-white text-xs"
+                              className="sm:col-span-2 px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs font-mono"
                             />
                           </div>
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                          Ringkasan Singkat (Tampil di kartu depan)
+                        <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                          Ringkasan Singkat
                         </label>
                         <textarea
                           rows={2}
@@ -1383,13 +1502,13 @@ export default function AdminSubdomainPage() {
                               pengumumanSection: { ...data.pengumumanSection, items: updated },
                             });
                           }}
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-medium text-[#515154] mb-1">
-                          Isi Lengkap Artikel / Pengumuman Blog (Tampil saat diklik &ldquo;Baca Selengkapnya&rdquo;)
+                        <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                          Isi Lengkap Artikel / Pengumuman
                         </label>
                         <textarea
                           rows={4}
@@ -1402,14 +1521,13 @@ export default function AdminSubdomainPage() {
                               pengumumanSection: { ...data.pengumumanSection, items: updated },
                             });
                           }}
-                          placeholder="Tulis artikel berita, notulen rapat koperasi, maklumat cuaca maritim, atau instruksi lengkap..."
-                          className="w-full px-3 py-1.5 rounded-lg border bg-white text-xs leading-relaxed"
+                          className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs leading-relaxed"
                         />
                       </div>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-black/[0.05]">
-                        <label className="text-xs text-[#0071E3] font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
-                          <Upload className="w-3.5 h-3.5" /> Unggah Banner Foto Artikel dari Perangkat
+                      <div className="flex items-center justify-between pt-2 border-t border-zinc-200">
+                        <label className="text-xs text-sky-700 font-medium cursor-pointer inline-flex items-center gap-1 hover:underline">
+                          <Upload className="w-3.5 h-3.5" /> Unggah Banner Foto dari Perangkat
                           <input
                             type="file"
                             accept="image/*"
@@ -1429,8 +1547,11 @@ export default function AdminSubdomainPage() {
                           />
                         </label>
                         <button
+                          type="button"
                           onClick={() => {
-                            const updated = data.pengumumanSection.items.filter((_, i) => i !== idx);
+                            const updated = data.pengumumanSection.items.filter(
+                              (_, i) => i !== idx
+                            );
                             setData({
                               ...data,
                               pengumumanSection: { ...data.pengumumanSection, items: updated },
@@ -1452,31 +1573,30 @@ export default function AdminSubdomainPage() {
 
       {/* ================= MODAL PRATINJAU PORTAL (LIVE PREVIEW) ================= */}
       {showLivePreview && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex flex-col">
-          {/* Top Control Bar */}
-          <div className="h-14 bg-white border-b border-black/[0.08] px-3 sm:px-6 flex items-center justify-between shrink-0 shadow-sm gap-2">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex flex-col">
+          <div className="h-14 bg-white border-b border-zinc-200 px-3 sm:px-6 flex items-center justify-between shrink-0 gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <span className="text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
-                <span className="sm:hidden">Pratinjau</span>
-                <span className="hidden sm:inline">Mode Pratinjau (Draft Live)</span>
+              <span className="text-[11px] font-mono uppercase tracking-wider font-semibold px-2.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 shrink-0">
+                Draft Live Preview
               </span>
-              <div className="hidden sm:flex items-center gap-1.5 md:gap-2">
+              <div className="hidden sm:flex items-center gap-1">
                 {(
                   [
-                    { key: 'beranda', label: 'Beranda' },
-                    { key: 'pengurus', label: 'Pengurus' },
-                    { key: 'mengenal', label: 'Mengenal Kami' },
-                    { key: 'produk', label: 'Produk' },
-                    { key: 'pengumuman', label: 'Pengumuman' },
+                    { key: 'beranda', label: '01 Beranda' },
+                    { key: 'produk', label: '02 Produk' },
+                    { key: 'mengenal', label: '03 Profil' },
+                    { key: 'pengurus', label: '04 Pengurus' },
+                    { key: 'pengumuman', label: '05 Warta' },
                   ] as const
                 ).map((t) => (
                   <button
                     key={t.key}
+                    type="button"
                     onClick={() => setPreviewTab(t.key)}
-                    className={`text-xs px-3 py-1 rounded-full transition ${
+                    className={`text-xs px-3 py-1 rounded-md transition-colors ${
                       previewTab === t.key
-                        ? 'bg-[#1D1D1F] text-white font-medium shadow-sm'
-                        : 'text-[#86868B] hover:text-[#1D1D1F]'
+                        ? 'bg-[#071A2E] text-white font-semibold'
+                        : 'text-zinc-600 hover:text-zinc-900'
                     }`}
                   >
                     {t.label}
@@ -1487,23 +1607,17 @@ export default function AdminSubdomainPage() {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => window.open('/', '_blank')}
-                className="hidden md:inline-flex items-center gap-1 text-xs text-[#0071E3] hover:underline px-2 py-1"
-              >
-                <span>Buka Tab Baru</span>
-                <ExternalLink className="w-3 h-3" />
-              </button>
-              <button
+                type="button"
                 onClick={handleSaveAll}
-                className="bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-full inline-flex items-center gap-1.5 transition shadow-sm"
+                className="bg-[#071A2E] hover:bg-[#0D2847] text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg inline-flex items-center gap-1.5 transition-colors"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">Simpan Perubahan</span>
-                <span className="xs:hidden">Simpan</span>
+                <span>Simpan Perubahan</span>
               </button>
               <button
+                type="button"
                 onClick={() => setShowLivePreview(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition"
+                className="w-8 h-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 flex items-center justify-center transition-colors"
                 title="Tutup Pratinjau"
               >
                 <X className="w-4 h-4" />
@@ -1511,306 +1625,90 @@ export default function AdminSubdomainPage() {
             </div>
           </div>
 
-          {/* Mobile Preview Sub-bar: Navigasi Antar Tab Khusus HP */}
-          <div className="flex sm:hidden overflow-x-auto px-3 py-2 gap-1.5 bg-[#F5F5F7] border-b border-black/[0.08] no-scrollbar shrink-0">
-            {(
-              [
-                { key: 'beranda', label: 'Beranda' },
-                { key: 'pengurus', label: 'Pengurus' },
-                { key: 'mengenal', label: 'Mengenal' },
-                { key: 'produk', label: 'Produk' },
-                { key: 'pengumuman', label: 'Warta' },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setPreviewTab(t.key)}
-                className={`text-xs px-3 py-1 rounded-full whitespace-nowrap transition shrink-0 ${
-                  previewTab === t.key
-                    ? 'bg-[#1D1D1F] text-white font-medium shadow-sm'
-                    : 'bg-white text-[#515154] border border-black/[0.08]'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Body Preview: Render persis portal publik menggunakan state draft saat ini */}
-          <div className="flex-1 overflow-y-auto bg-[#F5F5F7]">
-            <div key={previewTab} className="animate-tab-switch max-w-[1120px] mx-auto pb-16">
-              {/* TAB BERANDA PREVIEW */}
+          <div className="flex-1 overflow-y-auto bg-[#FAF8F5] p-4 sm:p-6">
+            <div className="max-w-[1060px] mx-auto bg-white rounded-xl border border-zinc-200 p-5 sm:p-8 space-y-6">
               {previewTab === 'beranda' && (
-                <div>
-                  <section className="bg-[#071D36] text-white pt-8 sm:pt-12 pb-14 sm:pb-20 px-4 sm:px-5 rounded-b-2xl sm:rounded-b-3xl">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center">
-                      <div className="lg:col-span-7 space-y-3 sm:space-y-4">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.07] border border-white/[0.12] text-[11px] font-medium tracking-wider uppercase text-blue-200">
-                          <Waves className="w-3.5 h-3.5 text-sky-400" />
-                          <span>{data.beranda.eyebrow}</span>
+                <div className="space-y-6">
+                  <div className="p-6 rounded-xl bg-[#071A2E] text-white space-y-3">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-sky-300">
+                      {data.beranda.eyebrow}
+                    </span>
+                    <h2 className="text-2xl font-semibold tracking-tight">{data.beranda.title}</h2>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {data.beranda.description}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {data.beranda.stats.map((s) => (
+                      <div key={s.id} className="p-4 rounded-lg border border-zinc-200 bg-[#FAF8F5]">
+                        <span className="text-xs text-zinc-500">{s.label}</span>
+                        <div className="text-xl font-mono font-semibold tabular-nums mt-1">
+                          {s.value} {s.unit}
                         </div>
-                        <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
-                          {data.beranda.title}
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl">
-                          {data.beranda.description}
+                        <span className="text-[11px] text-zinc-500 mt-1 block">{s.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {previewTab === 'produk' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {data.produkSection.items.map((p) => (
+                    <div key={p.id} className="rounded-lg border border-zinc-200 overflow-hidden">
+                      <img src={p.imageUrl} alt={p.name} className="w-full h-36 object-cover" />
+                      <div className="p-4 space-y-1">
+                        <span className="text-[10px] font-mono uppercase text-zinc-500">
+                          {p.category}
+                        </span>
+                        <h3 className="text-sm font-semibold">{p.name}</h3>
+                        <p className="text-sm font-mono font-semibold tabular-nums text-zinc-900">
+                          {p.pricePerKg} / kg
                         </p>
                       </div>
-
-                      <div className="lg:col-span-5">
-                        <div className="rounded-2xl bg-[#0B294B] border border-white/15 p-4 sm:p-5 shadow-xl">
-                          <div className="flex items-center justify-between text-[11px] text-slate-300 pb-2.5 mb-2.5 border-b border-white/10">
-                            <span className="font-medium text-white flex items-center gap-1.5 truncate">
-                              <Fish className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                              <span className="truncate">{data.beranda.heroCardTitle || 'Ekosistem Perairan Oepuah'}</span>
-                            </span>
-                            <span className="font-mono text-[10px] text-sky-300 shrink-0 ml-2">
-                              {data.beranda.heroCardCoords || "09°09'S 124°35'E"}
-                            </span>
-                          </div>
-                          {data.beranda.heroImageUrl ? (
-                            <img
-                              src={data.beranda.heroImageUrl}
-                              alt="Hero Preview"
-                              className="w-full h-44 sm:h-48 object-cover rounded-xl"
-                            />
-                          ) : (
-                            <div className="h-40 sm:h-44 bg-[#06182E] rounded-xl flex items-center justify-center text-xs text-sky-300 font-mono">
-                              [Ilustrasi Vektor Ikan Laut Otomatis]
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </div>
-                  </section>
-
-                  {/* Kartu Metrik Preview (Fleksibel, Bersih Tanpa Grafik) */}
-                  <div className="px-3 sm:px-5 -mt-6 sm:-mt-8">
-                    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-black/[0.08] shadow-sm">
-                      <div className="pb-3 sm:pb-4 border-b border-black/[0.06]">
-                        <h2 className="text-sm sm:text-base font-semibold text-[#1D1D1F]">{data.beranda.statsTitle}</h2>
-                        <p className="text-xs text-[#86868B]">{data.beranda.statsSubtitle}</p>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mt-3 sm:mt-4">
-                        {data.beranda.stats.map((stat) => (
-                          <div
-                            key={stat.id}
-                            className="p-3.5 sm:p-4 rounded-xl bg-[#F5F5F7] border border-black/[0.05] flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs text-[#86868B]">{stat.label}</span>
-                                {stat.trendLabel && (
-                                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                    {stat.trendLabel}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xl sm:text-2xl font-semibold my-1.5 sm:my-2 text-[#1D1D1F]">
-                                {stat.value}
-                                {stat.unit && (
-                                  <span className="text-sm sm:text-base font-normal text-[#86868B] ml-1.5">
-                                    {stat.unit}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <span className="text-[11px] text-[#86868B] block leading-relaxed pt-2 border-t border-black/[0.04]">
-                              {stat.detail}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               )}
 
-              {/* TAB PENGURUS PREVIEW */}
-              {previewTab === 'pengurus' && (
-                <div className="px-4 sm:px-5 pt-6 sm:pt-8 space-y-4 sm:space-y-6">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-semibold">{data.pengurusSection.title}</h2>
-                    <p className="text-xs text-[#86868B] mt-1">{data.pengurusSection.subtitle}</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    {data.pengurusSection.items.map((person) => (
-                      <div
-                        key={person.id}
-                        className="bg-white rounded-2xl overflow-hidden border border-black/[0.08] shadow-sm flex flex-col justify-between"
-                      >
-                        <div>
-                          <img
-                            src={person.photoUrl}
-                            alt={person.name}
-                            className="w-full h-44 sm:h-48 object-cover"
-                          />
-                          <div className="p-4 sm:p-5">
-                            <span className="text-[11px] font-medium text-[#0071E3] uppercase">
-                              {person.role}
-                            </span>
-                            <h3 className="text-base font-semibold text-[#1D1D1F] mt-1">
-                              {person.name}
-                            </h3>
-                          </div>
-                        </div>
-                        <div className="p-3.5 sm:p-4 bg-[#FAFAFC] border-t border-black/[0.06] text-xs space-y-1.5">
-                          {person.phone && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[#1D1D1F] flex items-center gap-1.5 truncate">
-                                <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span className="truncate">{person.phone}</span>
-                              </span>
-                              <span className="text-[10px] text-emerald-700 font-medium shrink-0">WhatsApp</span>
-                            </div>
-                          )}
-                          {person.email && (
-                            <div className="text-[#86868B] flex items-center gap-1.5 truncate">
-                              <Mail className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">{person.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB MENGENAL PREVIEW */}
               {previewTab === 'mengenal' && (
-                <div className="px-4 sm:px-5 pt-6 sm:pt-8 space-y-4 sm:space-y-6">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-semibold">{data.mengenalKami.title}</h2>
-                    <p className="text-xs text-[#86868B] mt-1">{data.mengenalKami.subtitle}</p>
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
-                    <div className="lg:col-span-7 space-y-4">
-                      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-black/[0.08] shadow-sm text-xs leading-relaxed whitespace-pre-line">
-                        {data.mengenalKami.narrative}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-black/[0.08] shadow-sm">
-                          <span className="text-xs font-semibold text-[#0071E3] flex items-center gap-1.5 mb-1">
-                            <ShieldCheck className="w-4 h-4" /> Visi Utama
-                          </span>
-                          <p className="text-xs text-[#1D1D1F]">{data.mengenalKami.vision}</p>
-                        </div>
-                        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-black/[0.08] shadow-sm">
-                          <span className="text-xs font-semibold text-[#0071E3] flex items-center gap-1.5 mb-1">
-                            <Layers className="w-4 h-4" /> Misi Strategis
-                          </span>
-                          <ul className="text-[11px] text-[#515154] list-disc pl-4 space-y-1">
-                            {data.mengenalKami.missions.map((m, i) => (
-                              <li key={i}>{m}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="lg:col-span-5">
-                      <div className="bg-white rounded-2xl overflow-hidden border border-black/[0.08] shadow-sm">
-                        <img
-                          src={data.mengenalKami.imageUrl}
-                          alt="Sekretariat"
-                          className="w-full h-44 sm:h-48 object-cover"
-                        />
-                        <div className="p-4 sm:p-5 space-y-2 text-xs">
-                          <h4 className="font-semibold text-sm">Sekretariat Koperasi</h4>
-                          <p className="text-[#515154] leading-relaxed">{data.mengenalKami.address}</p>
-                          <p className="text-[#0071E3] font-medium">{data.mengenalKami.phone}</p>
-                          <p className="text-[#86868B]">{data.mengenalKami.email}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold">{data.mengenalKami.title}</h2>
+                  <p className="text-xs text-zinc-700 whitespace-pre-line leading-relaxed">
+                    {data.mengenalKami.narrative}
+                  </p>
                 </div>
               )}
 
-              {/* TAB PRODUK PREVIEW */}
-              {previewTab === 'produk' && (
-                <div className="px-4 sm:px-5 pt-6 sm:pt-8 space-y-4 sm:space-y-6">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-semibold">{data.produkSection.title}</h2>
-                    <p className="text-xs text-[#86868B] mt-1">{data.produkSection.subtitle}</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    {data.produkSection.items.map((prd) => (
-                      <div
-                        key={prd.id}
-                        className="bg-white rounded-2xl overflow-hidden border border-black/[0.08] shadow-sm flex flex-col justify-between"
-                      >
-                        <div>
-                          <div className="h-40 sm:h-44 overflow-hidden relative bg-gray-100">
-                            <img
-                              src={prd.imageUrl}
-                              alt={prd.name}
-                              className="w-full h-full object-cover"
-                            />
-                            <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/75 text-white">
-                              {prd.availability}
-                            </span>
-                          </div>
-                          <div className="p-4 sm:p-5">
-                            <span className="text-[10px] text-[#86868B] uppercase">{prd.category}</span>
-                            <h3 className="text-base font-semibold text-[#1D1D1F] mt-0.5">
-                              {prd.name}
-                            </h3>
-                            <p className="text-xs text-[#515154] mt-1.5 line-clamp-2">
-                              {prd.description}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="px-4 sm:px-5 py-3 bg-[#FAFAFC] border-t border-black/[0.06] flex items-center justify-between">
-                          <span className="text-sm font-semibold text-[#1D1D1F]">
-                            {prd.pricePerKg} <span className="text-xs font-normal text-[#86868B]">/ kg</span>
-                          </span>
-                          <span className="text-[11px] font-medium text-[#0071E3]">Rantai Dingin</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              {previewTab === 'pengurus' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {data.pengurusSection.items.map((person) => (
+                    <div key={person.id} className="p-4 rounded-lg border border-zinc-200 space-y-2">
+                      <img
+                        src={person.photoUrl}
+                        alt={person.name}
+                        className="w-full h-36 object-cover rounded"
+                      />
+                      <span className="text-[10px] font-mono uppercase text-sky-800">
+                        {person.role}
+                      </span>
+                      <h3 className="text-sm font-semibold">{person.name}</h3>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* TAB PENGUMUMAN PREVIEW */}
               {previewTab === 'pengumuman' && (
-                <div className="px-4 sm:px-5 pt-6 sm:pt-8 space-y-4 sm:space-y-6">
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-semibold">{data.pengumumanSection.title}</h2>
-                    <p className="text-xs text-[#86868B] mt-1">{data.pengumumanSection.subtitle}</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                    {data.pengumumanSection.items.map((ann) => (
-                      <article
-                        key={ann.id}
-                        className="bg-white rounded-2xl overflow-hidden border border-black/[0.08] shadow-sm flex flex-col justify-between"
-                      >
-                        {ann.imageUrl && (
-                          <img
-                            src={ann.imageUrl}
-                            alt={ann.title}
-                            className="w-full h-40 sm:h-44 object-cover"
-                          />
-                        )}
-                        <div className="p-4 sm:p-5 space-y-2">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold text-[10px]">
-                              {ann.category}
-                            </span>
-                            <span className="text-[#86868B]">{ann.date}</span>
-                          </div>
-                          <h3 className="text-base font-semibold text-[#1D1D1F]">{ann.title}</h3>
-                          <p className="text-xs text-[#515154] leading-relaxed line-clamp-3">
-                            {ann.summary}
-                          </p>
-                        </div>
-                        <div className="px-4 sm:px-5 py-3 bg-[#FAFAFC] border-t border-black/[0.06] text-xs font-semibold text-[#0071E3]">
-                          Baca Warta Selengkapnya →
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {data.pengumumanSection.items.map((ann) => (
+                    <div key={ann.id} className="p-4 rounded-lg border border-zinc-200 space-y-2">
+                      <span className="text-[10px] font-mono uppercase text-zinc-500">
+                        {ann.category} • {ann.date}
+                      </span>
+                      <h3 className="text-sm font-semibold">{ann.title}</h3>
+                      <p className="text-xs text-zinc-600">{ann.summary}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 460" fill="none">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="700" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#071D33"/>
+      <stop offset="100%" stop-color="#041220"/>
+    </linearGradient>
+    <linearGradient id="skipjack" x1="140" y1="140" x2="500" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="60%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+  <rect width="700" height="460" fill="url(#bg3)"/>
+  <g stroke="#38BDF8" stroke-opacity="0.08" stroke-dasharray="4 6">
+    <line x1="0" y1="115" x2="700" y2="115"/>
+    <line x1="0" y1="230" x2="700" y2="230"/>
+    <line x1="0" y1="345" x2="700" y2="345"/>
+  </g>
+  <text x="32" y="42" fill="#7DD3FC" font-family="monospace" font-size="13" letter-spacing="2">PELAGIS HARIAN • KATSUWONUS PELAMIS</text>
+  <g transform="translate(135, 140)">
+    <path d="M315 82 L405 24 L380 82 L405 140 Z" fill="#0369A1"/>
+    <path d="M125 32 Q175 -12 230 34 Z" fill="#0284C7"/>
+    <ellipse cx="180" cy="82" rx="160" ry="52" fill="url(#skipjack)"/>
+    <ellipse cx="175" cy="96" rx="130" ry="28" fill="#F0F9FF" fill-opacity="0.5"/>
+    <path d="M95 96 L285 96" stroke="#071A2E" stroke-opacity="0.35" stroke-width="2.5"/>
+    <path d="M110 106 L270 106" stroke="#071A2E" stroke-opacity="0.35" stroke-width="2.5"/>
+    <circle cx="58" cy="74" r="10" fill="#FFFFFF"/>
+    <circle cx="56" cy="74" r="5" fill="#071A2E"/>
+  </g>
+  <rect x="32" y="396" width="235" height="32" rx="6" fill="#0B2540" stroke="#38BDF8" stroke-opacity="0.25"/>
+  <text x="46" y="417" fill="#E0F2FE" font-family="monospace" font-size="12">TANGKAPAN HARIAN • SEGAR</text>
+</svg>
+

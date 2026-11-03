@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+  <rect width="800" height="440" fill="#061526"/>
+  <path d="M0 260 Q100 220 200 260 T400 260 T600 260 T800 260 L800 440 L0 440 Z" fill="#0C2E52"/>
+  <path d="M0 310 Q100 275 200 310 T400 310 T600 310 T800 310 L800 440 L0 440 Z" fill="#0284C7" fill-opacity="0.35"/>
+  <text x="400" y="135" text-anchor="middle" fill="#38BDF8" font-family="monospace" font-size="14" letter-spacing="2">BMKG MARITIM TENAU KUPANG • PERAIRAN UTARA TIMOR</text>
+  <text x="400" y="185" text-anchor="middle" fill="#FFFFFF" font-family="sans-serif" font-weight="700" font-size="34">GELOMBANG 0,5 – 1,25 METER</text>
+  <text x="400" y="222" text-anchor="middle" fill="#34D399" font-family="monospace" font-size="15">STATUS: KONDUSIF UNTUK ARMADA &lt; 10 GT (ANGIN 10–15 KNOT)</text>
+</svg>
+

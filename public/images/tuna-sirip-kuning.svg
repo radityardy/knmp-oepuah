@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 460" fill="none">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="700" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06182C"/>
+      <stop offset="60%" stop-color="#0A2E52"/>
+      <stop offset="100%" stop-color="#04101E"/>
+    </linearGradient>
+    <linearGradient id="tuna" x1="120" y1="130" x2="540" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0284C7"/>
+      <stop offset="50%" stop-color="#0369A1"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
+    </linearGradient>
+  </defs>
+  <rect width="700" height="460" fill="url(#bg2)"/>
+  <g stroke="#38BDF8" stroke-opacity="0.08" stroke-dasharray="4 6">
+    <line x1="0" y1="115" x2="700" y2="115"/>
+    <line x1="0" y1="230" x2="700" y2="230"/>
+    <line x1="0" y1="345" x2="700" y2="345"/>
+  </g>
+  <text x="32" y="42" fill="#FDE68A" font-family="monospace" font-size="13" letter-spacing="2">PELAGIS BESAR • THUNNUS ALBACARES</text>
+  <g transform="translate(120, 130)">
+    <path d="M340 90 L445 20 L412 90 L445 160 Z" fill="#F59E0B"/>
+    <path d="M140 36 L210 -26 L235 38 Z" fill="#F59E0B"/>
+    <path d="M165 144 L225 198 L245 142 Z" fill="#F59E0B"/>
+    <ellipse cx="195" cy="90" rx="180" ry="58" fill="url(#tuna)"/>
+    <path d="M35 92 Q195 108 360 90" stroke="#FBBF24" stroke-width="5" fill="none"/>
+    <ellipse cx="188" cy="108" rx="145" ry="30" fill="#E0F2FE" fill-opacity="0.45"/>
+    <circle cx="62" cy="80" r="11" fill="#FFFFFF"/>
+    <circle cx="59" cy="80" r="5.5" fill="#071A2E"/>
+  </g>
+  <rect x="32" y="396" width="248" height="32" rx="6" fill="#0B2540" stroke="#F59E0B" stroke-opacity="0.35"/>
+  <text x="46" y="417" fill="#FEF3C7" font-family="monospace" font-size="12">MUTU EKSPOR • LOIN &amp; WHOLE GG</text>
+</svg>
+

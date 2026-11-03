@@ -45,6 +45,15 @@
         "detail": "Fasilitas pembekuan & es balok mandiri",
         "trendLabel": "Mutu ekspor sashimi",
         "trendType": "neutral"
+      },
+      {
+        "id": "5",
+        "label": "Kas KNMP Oepuah",
+        "value": "Rp 148.500.000",
+        "unit": "",
+        "detail": "Likuiditas simpan pinjam & modal es nelayan",
+        "trendLabel": "Kas Lancar & Transparan",
+        "trendType": "up"
       }
     ]
   },
@@ -58,7 +67,7 @@
         "role": "Ketua Pengelola Kampung Nelayan",
         "email": "yohanes.lake@knmp-oepuah.id",
         "phone": "+62 812-3940-8812",
-        "photoUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80"
+        "photoUrl": "/images/pengurus-1.svg"
       },
       {
         "id": "p2",
@@ -66,7 +75,7 @@
         "role": "Sekretaris & Administrasi Koperasi",
         "email": "maria.bano@knmp-oepuah.id",
         "phone": "+62 813-5321-7789",
-        "photoUrl": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80"
+        "photoUrl": "/images/pengurus-2.svg"
       },
       {
         "id": "p3",
@@ -74,7 +83,7 @@
         "role": "Kepala Unit Cold Storage & Mutu",
         "email": "petrus.neonbeni@knmp-oepuah.id",
         "phone": "",
-        "photoUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80"
+        "photoUrl": "/images/pengurus-3.svg"
       }
     ]
   },
@@ -89,7 +98,7 @@
       "Menerapkan alat tangkap ramah lingkungan guna menjaga keberlanjutan stok ikan karang dan pelagis Oepuah.",
       "Meningkatkan kapasitas manajemen keuangan keluarga nelayan pesisir."
     ],
-    "imageUrl": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1000&q=80",
+    "imageUrl": "/images/pesisir-oepuah.svg",
     "address": "Pesisir Desa Oepuah, Kec. Biboki Moenleu, Kab. Timor Tengah Utara, NTT 85681",
     "phone": "+62 812-3940-8812",
     "email": "sekretariat@knmp-oepuah.id"
@@ -106,7 +115,7 @@
         "pricePerKg": "Rp 68.000",
         "availability": "Tersedia",
         "description": "Ditangkap menggunakan pancing ulur di perairan karang dalam Oepuah. Tekstur daging padat dengan penanganan dingin langsung di atas kapal.",
-        "imageUrl": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?auto=format&fit=crop&w=700&q=80"
+        "imageUrl": "/images/kakap-merah.svg"
       },
       {
         "id": "prd2",
@@ -116,7 +125,7 @@
         "pricePerKg": "Rp 55.000",
         "availability": "Tersedia",
         "description": "Komoditas unggulan perairan utara Timor. Tersedia dalam bentuk utuh segar (whole gilled & gutted) maupun loin beku.",
-        "imageUrl": "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=700&q=80"
+        "imageUrl": "/images/tuna-sirip-kuning.svg"
       },
       {
         "id": "prd3",
@@ -126,7 +135,7 @@
         "pricePerKg": "Rp 36.000",
         "availability": "Tersedia",
         "description": "Hasil tangkapan harian utama nelayan Oepuah untuk pasokan pasar daerah dan industri pengolahan ikan.",
-        "imageUrl": "https://images.unsplash.com/photo-1544943910-4c1dc44aab44?auto=format&fit=crop&w=700&q=80"
+        "imageUrl": "/images/cakalang-segar.svg"
       }
     ]
   },
@@ -140,8 +149,8 @@
         "date": "16 Oktober 2026",
         "category": "Operasional",
         "summary": "Pelayanan pengambilan es balok untuk armada tangkap pagi dibuka setiap hari pukul 04.30 WITA di Unit Produksi Es Koperasi KNMP Oepuah.",
-        "imageUrl": "https://images.unsplash.com/photo-1516214104703-d870798883c5?auto=format&fit=crop&w=800&q=80",
-        "content": "Untuk memastikan rantai dingin (cold chain) hasil tangkapan nelayan Oepuah tetap optimal, Koperasi Nelayan Merah Putih mengumumkan jadwal operasional cold storage dan unit pabrik es balok harian:\n\n1. Pembagian Es Pagi: 04.30 - 06.00 WITA untuk perahu pancing ulur dan jaring lingkar.\n2. Pembagian Es Sore: 16.00 - 17.30 WITA untuk armada malam.\n3. Biaya es balok subsidi anggota sebesar Rp 12.000 per balok 25 kg.\n\nDihimbau kepada seluruh nahkoda untuk membawa palka insulasi saat pengambilan es guna meminimalkan penyusutan."
+        "content": "Untuk memastikan rantai dingin (cold chain) hasil tangkapan nelayan Oepuah tetap optimal, Koperasi Nelayan Merah Putih mengumumkan jadwal operasional cold storage dan unit pabrik es balok harian:\n\n1. Pembagian Es Pagi: 04.30 - 06.00 WITA untuk perahu pancing ulur dan jaring lingkar.\n2. Pembagian Es Sore: 16.00 - 17.30 WITA untuk armada malam.\n3. Biaya es balok subsidi anggota sebesar Rp 12.000 per balok 25 kg.\n\nDihimbau kepada seluruh nahkoda untuk membawa palka insulasi saat pengambilan es guna meminimalkan penyusutan.",
+        "imageUrl": "/images/warta-cold-storage.svg"
       },
       {
         "id": "ann2",
@@ -149,8 +158,8 @@
         "date": "14 Oktober 2026",
         "category": "Keselamatan Laut",
         "summary": "Berdasarkan rilis Stasiun Meteorologi Maritim Tenau Kupang, tinggi gelombang perairan Oepuah berkisar 0,5 hingga 1,25 meter dengan angin timuran 10–15 knot.",
-        "imageUrl": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
-        "content": "BMKG Maritim mengeluarkan peringatan dini cuaca perairan Laut Sawu dan Selat Ombai:\n\n- Kecepatan angin timuran: 10 s/d 18 knot.\n- Tinggi gelombang rata-rata: 0,75 - 1,25 meter (kategori tenang hingga sedang).\n- Jarak pandang laut: > 8 kilometer.\n\nKondisi relatif kondusif untuk melaut bagi perahu motor tempel dan armada tangkap < 10 GT. Tetap lengkapi perahu dengan alat keselamatan (life jacket) dan lampu navigasi."
+        "content": "BMKG Maritim mengeluarkan peringatan dini cuaca perairan Laut Sawu dan Selat Ombai:\n\n- Kecepatan angin timuran: 10 s/d 18 knot.\n- Tinggi gelombang rata-rata: 0,75 - 1,25 meter (kategori tenang hingga sedang).\n- Jarak pandang laut: > 8 kilometer.\n\nKondisi relatif kondusif untuk melaut bagi perahu motor tempel dan armada tangkap < 10 GT. Tetap lengkapi perahu dengan alat keselamatan (life jacket) dan lampu navigasi.",
+        "imageUrl": "/images/warta-gelombang.svg"
       }
     ]
   }

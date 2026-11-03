@@ -1,0 +1,42 @@
+{
+  "output": {
+    "filePath": "repomix-output.md",
+    "style": "markdown",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "topFilesLength": 10
+  },
+  "include": [
+    "src/**/*",
+    "public/**/*",
+    "Dockerfile",
+    "docker-compose.yml",
+    "next.config.mjs",
+    "package.json",
+    "tailwind.config.ts",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      "dist/**",
+      "data/*.tmp",
+      "*.db",
+      "*.db-journal",
+      ".env*",
+      "secrets/**",
+      "repomix-output.*",
+      "docs/screenshots/**"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
+

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 460" fill="none">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="700" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#071A2E"/>
+      <stop offset="60%" stop-color="#0D2E4F"/>
+      <stop offset="100%" stop-color="#061423"/>
+    </linearGradient>
+    <linearGradient id="snapper" x1="150" y1="150" x2="520" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB7185"/>
+      <stop offset="55%" stop-color="#E11D48"/>
+      <stop offset="100%" stop-color="#9F1239"/>
+    </linearGradient>
+  </defs>
+  <rect width="700" height="460" fill="url(#bg1)"/>
+  <g stroke="#38BDF8" stroke-opacity="0.08" stroke-dasharray="4 6">
+    <line x1="0" y1="115" x2="700" y2="115"/>
+    <line x1="0" y1="230" x2="700" y2="230"/>
+    <line x1="0" y1="345" x2="700" y2="345"/>
+    <line x1="175" y1="0" x2="175" y2="460"/>
+    <line x1="350" y1="0" x2="350" y2="460"/>
+    <line x1="525" y1="0" x2="525" y2="460"/>
+  </g>
+  <text x="32" y="42" fill="#7DD3FC" font-family="monospace" font-size="13" letter-spacing="2">KOMODITAS DEMERSAL • WPPNRI 573</text>
+  <g transform="translate(135, 125)">
+    <path d="M310 95 L410 35 L385 95 L410 155 Z" fill="#BE123C"/>
+    <path d="M105 38 Q190 -24 275 38 Z" fill="#9F1239"/>
+    <path d="M140 150 Q205 188 265 145 Z" fill="#9F1239"/>
+    <ellipse cx="185" cy="95" rx="165" ry="68" fill="url(#snapper)"/>
+    <ellipse cx="175" cy="108" rx="130" ry="38" fill="#FFE4E6" fill-opacity="0.32"/>
+    <path d="M125 78 Q155 95 125 118" stroke="#FFE4E6" stroke-opacity="0.45" stroke-width="3" fill="none"/>
+    <circle cx="68" cy="82" r="12" fill="#FFFFFF"/>
+    <circle cx="65" cy="82" r="6" fill="#071A2E"/>
+  </g>
+  <rect x="32" y="396" width="240" height="32" rx="6" fill="#0B2540" stroke="#38BDF8" stroke-opacity="0.25"/>
+  <text x="46" y="417" fill="#E0F2FE" font-family="monospace" font-size="12">SUHU SIMPAN: -22°C RANTAI DINGIN</text>
+</svg>
+
