@@ -28,7 +28,7 @@ The content is organized as follows:
 ## Notes
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Only files matching these patterns are included: src/**/*, public/**/*, Dockerfile, docker-compose.yml, next.config.mjs, package.json, tailwind.config.ts, tsconfig.json, README.md
+- Only files matching these patterns are included: src/**/*, public/**/*, scripts/**/*, .github/**/*, .gitlab-ci.yml, .eslintrc.json, Dockerfile, docker-compose.yml, next.config.mjs, package.json, tailwind.config.ts, tsconfig.json, README.md
 - Files matching these patterns are excluded: node_modules/**, .next/**, dist/**, data/*.tmp, *.db, *.db-journal, .env*, secrets/**, repomix-output.*, docs/screenshots/**
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
@@ -36,6 +36,9 @@ The content is organized as follows:
 
 # Directory Structure
 ````
+.github/
+  workflows/
+    deploy.yml
 public/
   images/
     cakalang-segar.svg
@@ -48,6 +51,9 @@ public/
     warta-cold-storage.svg
     warta-gelombang.svg
   .gitkeep
+scripts/
+  auto-deploy.ps1
+  auto-deploy.sh
 src/
   app/
     admin/
@@ -72,6 +78,8 @@ src/
   types/
     cms.ts
   middleware.ts
+.eslintrc.json
+.gitlab-ci.yml
 docker-compose.yml
 Dockerfile
 next.config.mjs
@@ -82,6 +90,233 @@ tsconfig.json
 ````
 
 # Files
+
+## File: .github/workflows/deploy.yml
+````yaml
+name: CI/CD Deploy KNMP Oepuah
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 1. Tahap Validasi Lint & Build Next.js
+  verify-build:
+    name: Verify Lint & Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run ESLint & TypeScript Check
+        run: npm run lint
+
+      - name: Build Next.js Standalone
+        run: npm run build
+
+  # 2. Tahap Auto-Pull & Rebuild Docker di Server via SSH
+  deploy-ssh:
+    name: Auto-Pull & Deploy to Server (SSH)
+    needs: verify-build
+    runs-on: ubuntu-latest
+    # Hanya berjalan jika Secret SSH_HOST sudah diisi di GitHub Settings -> Secrets -> Actions
+    if: ${{ vars.ENABLE_SSH_DEPLOY != 'false' }}
+    steps:
+      - name: Deploy to Server via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '~/knmp-oepuah' }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "Info: Secrets SSH_HOST / SSH_USER / SSH_PRIVATE_KEY belum diatur di GitHub Repository."
+            echo "Silakan tambahkan di Settings -> Secrets and variables -> Actions untuk mengaktifkan auto-deploy SSH."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << EOF
+            set -e
+            echo "==> Masuk ke direktori project: $DEPLOY_PATH"
+            cd $DEPLOY_PATH
+
+            echo "==> Mencadangkan data CMS (data/cms.json) agar perubahan admin tetap aman..."
+            if [ -f data/cms.json ]; then
+              cp data/cms.json /tmp/knmp_cms_backup.json
+            fi
+
+            echo "==> Menarik pembaruan terbaru dari branch $BRANCH_NAME..."
+            git fetch --all
+            git reset --hard origin/$BRANCH_NAME
+
+            if [ -f /tmp/knmp_cms_backup.json ]; then
+              mkdir -p data
+              cp /tmp/knmp_cms_backup.json data/cms.json
+              rm -f /tmp/knmp_cms_backup.json
+            fi
+
+            echo "==> Membangun ulang & menjalankan container Docker..."
+            docker compose up -d --build --remove-orphans
+            docker image prune -f
+
+            echo "==> Deployment selesai!"
+            docker compose ps
+          EOF
+````
+
+## File: scripts/auto-deploy.ps1
+````powershell
+# Skrip Auto-Pull & Rebuild Docker untuk Server Windows (PowerShell)
+# Cocok untuk server dengan IP lokal/privat yang menjalankan Docker Desktop di Windows.
+# Jalankan di terminal: .\scripts\auto-deploy.ps1
+
+param(
+  [string]$Branch = "main",
+  [int]$IntervalSeconds = 30
+)
+
+Write-Host "==> Memantau repositori Git (branch: $Branch) setiap $IntervalSeconds detik..." -ForegroundColor Cyan
+
+while ($true) {
+  git fetch origin $Branch --quiet
+  $localHash = (git rev-parse HEAD).Trim()
+  $remoteHash = (git rev-parse "origin/$Branch").Trim()
+
+  if ($localHash -ne $remoteHash) {
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Host "[$timestamp] Push baru terdeteksi ($localHash -> $remoteHash). Menarik kode & rebuild Docker..." -ForegroundColor Green
+
+    if (Test-Path "data\cms.json") {
+      Copy-Item "data\cms.json" "$env:TEMP\knmp_cms_backup.json" -Force
+    }
+
+    git reset --hard "origin/$Branch"
+
+    if (Test-Path "$env:TEMP\knmp_cms_backup.json") {
+      New-Item -ItemType Directory -Force -Path "data" | Out-Null
+      Copy-Item "$env:TEMP\knmp_cms_backup.json" "data\cms.json" -Force
+    }
+
+    docker compose up -d --build --remove-orphans
+    docker image prune -f
+    Write-Host "[$timestamp] Container berhasil diperbarui!" -ForegroundColor Green
+  }
+
+  Start-Sleep -Seconds $IntervalSeconds
+}
+````
+
+## File: scripts/auto-deploy.sh
+````bash
+#!/usr/bin/env bash
+# Skrip Auto-Pull & Rebuild Docker untuk Server Linux / VPS (termasuk IP Privat / Lokal)
+# Cara pakai otomatis (cron tiap 1 menit):
+# * * * * * cd /path/to/knmp-oepuah && ./scripts/auto-deploy.sh >> /var/log/knmp-deploy.log 2>&1
+
+set -e
+
+BRANCH="${1:-main}"
+
+git fetch origin "$BRANCH" --quiet
+LOCAL_HASH=$(git rev-parse HEAD)
+REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
+
+if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+  echo "[$(date -Iseconds)] Pembaruan terdeteksi ($LOCAL_HASH -> $REMOTE_HASH). Memulai auto-deploy..."
+
+  if [ -f data/cms.json ]; then
+    cp data/cms.json /tmp/knmp_cms_backup.json
+  fi
+
+  git reset --hard "origin/$BRANCH"
+
+  if [ -f /tmp/knmp_cms_backup.json ]; then
+    mkdir -p data
+    cp /tmp/knmp_cms_backup.json data/cms.json
+    rm -f /tmp/knmp_cms_backup.json
+  fi
+
+  docker compose up -d --build --remove-orphans
+  docker image prune -f
+  echo "[$(date -Iseconds)] Auto-deploy selesai!"
+fi
+````
+
+## File: .gitlab-ci.yml
+````yaml
+stages:
+  - verify
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+verify_build:
+  stage: verify
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run lint
+    - npm run build
+  only:
+    - main
+    - master
+
+deploy_server:
+  stage: deploy
+  image: alpine:3.20
+  needs:
+    - verify_build
+  before_script:
+    - apk add --no-cache openssh-client
+  script:
+    - |
+      if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+        echo "Secrets SSH_HOST / SSH_USER / SSH_PRIVATE_KEY belum diatur di GitLab CI/CD Variables."
+        exit 0
+      fi
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+      chmod 600 ~/.ssh/id_deploy
+      PORT="${SSH_PORT:-22}"
+      TARGET_DIR="${DEPLOY_PATH:-~/knmp-oepuah}"
+      ssh -i ~/.ssh/id_deploy -p "$PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "
+        set -e
+        cd $TARGET_DIR
+        [ -f data/cms.json ] && cp data/cms.json /tmp/knmp_cms_backup.json
+        git fetch --all
+        git reset --hard origin/$CI_COMMIT_REF_NAME
+        [ -f /tmp/knmp_cms_backup.json ] && mkdir -p data && cp /tmp/knmp_cms_backup.json data/cms.json
+        docker compose up -d --build --remove-orphans
+        docker image prune -f
+      "
+  only:
+    - main
+    - master
+````
 
 ## File: public/images/cakalang-segar.svg
 ````xml
@@ -297,6 +532,11 @@ tsconfig.json
 </svg>
 ````
 
+## File: public/.gitkeep
+````
+# Public assets directory
+````
+
 ## File: src/app/api/auth/route.ts
 ````typescript
 import { NextRequest, NextResponse } from 'next/server';
@@ -391,6 +631,121 @@ export async function DELETE() {
   const response = NextResponse.json({ authenticated: false, message: 'Sesi diakhiri.' });
   response.cookies.delete(COOKIE_NAME);
   return response;
+}
+````
+
+## File: src/app/not-found.tsx
+````typescript
+import Link from 'next/link';
+
+export default function NotFound() {
+  return (
+    <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center px-4 font-sans text-[#1D1D1F]">
+      <div className="max-w-md w-full bg-white rounded-2xl p-8 border border-black/[0.08] shadow-sm text-center">
+        <span className="text-4xl font-bold text-[#0071E3] block mb-2">404</span>
+        <h1 className="text-xl font-semibold mb-2">Halaman Tidak Ditemukan</h1>
+        <p className="text-xs text-[#86868B] mb-6">
+          Halaman yang Anda tuju tidak tersedia atau telah dipindahkan.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center justify-center px-5 py-2.5 rounded-full text-xs font-medium text-white bg-[#0071E3] hover:bg-[#0077ED] transition-colors"
+        >
+          Kembali ke Beranda
+        </Link>
+      </div>
+    </div>
+  );
+}
+````
+
+## File: src/components/MetricSparkline.tsx
+````typescript
+'use client';
+
+import React from 'react';
+
+// Helper generator titik angka grafik tren secara 100% otomatis dari Nilai Utama
+export function getAutoChartPoints(
+  valueStr: string,
+  pattern: 'up' | 'stable' | 'wave' = 'up',
+  manualPoints?: number[]
+): number[] {
+  if (manualPoints && manualPoints.length >= 2) return manualPoints;
+  const cleanStr = (valueStr || '').replace(',', '.');
+  const match = cleanStr.match(/-?\d+(\.\d+)?/);
+  const baseNum = match ? parseFloat(match[0]) : 100;
+  const absNum = Math.abs(baseNum) || 100;
+  const isNegative = baseNum < 0;
+
+  if (pattern === 'stable') {
+    const factors = [0.98, 1.01, 0.99, 1.02, 0.99, 1.01, 1.0];
+    return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
+  }
+  if (pattern === 'wave') {
+    const factors = [0.78, 1.12, 0.85, 1.18, 0.92, 1.08, 1.0];
+    return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
+  }
+  // 'up'
+  const factors = [0.68, 0.75, 0.82, 0.88, 0.91, 0.96, 1.0];
+  return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
+}
+
+// Helper component untuk merender Sparkline SVG dinamis otomatis
+export function MetricSparkline({
+  value,
+  pattern = 'up',
+  points,
+  color = '#0071E3',
+  id,
+}: {
+  value: string;
+  pattern?: 'up' | 'stable' | 'wave';
+  points?: number[];
+  color?: string;
+  id: string;
+}) {
+  const data = getAutoChartPoints(value, pattern, points);
+  const width = 160;
+  const height = 40;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const coords = data.map((val, idx) => {
+    const x = (idx / (data.length - 1)) * width;
+    const y = height - ((val - min) / range) * (height - 10) - 5;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const pathD = `M ${coords.join(' L ')}`;
+  const gradId = `sparkGrad-${id}`;
+
+  return (
+    <div className="w-full h-10 mt-3 overflow-hidden">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+        {/* Area fill */}
+        <path d={`M ${coords.join(' L ')} L ${width},${height} L 0,${height} Z`} fill={`url(#${gradId})`} />
+        {/* Line stroke */}
+        <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Dot on the latest point */}
+        {coords.length > 0 && (
+          <circle
+            cx={coords[coords.length - 1].split(',')[0]}
+            cy={coords[coords.length - 1].split(',')[1]}
+            r="3"
+            fill={color}
+          />
+        )}
+      </svg>
+    </div>
+  );
 }
 ````
 
@@ -718,9 +1073,178 @@ export function sanitizeCmsPayload(raw: unknown, fallback: CmsData): CmsData {
 }
 ````
 
-## File: public/.gitkeep
+## File: src/types/cms.ts
+````typescript
+export interface StatItem {
+  id: string;
+  value: string; // Nilai angka / jumlah (misal: "142", "3,8", "Rp 148.500.000")
+  unit?: string; // Satuan fleksibel (misal: "Unit", "Ton", "KK", "°C", atau kosong jika sudah ada Rp di nilai)
+  label: string;
+  detail: string;
+  trendLabel?: string; // misal: "+12 unit thn ini", "+15% musim pelagis", "Sehat & Transparan"
+  trendType?: 'up' | 'down' | 'neutral';
+  trendPattern?: 'up' | 'stable' | 'wave';
+  chartData?: number[];
+}
+
+export interface PengurusItem {
+  id: string;
+  name: string;
+  role: string;
+  email?: string; // opsional: bisa diisi atau dikosongkan sebebas admin
+  phone?: string; // opsional: nomor telepon / WhatsApp pengurus
+  photoUrl: string;
+}
+
+export interface ProductItem {
+  id: string;
+  name: string;
+  latinName: string;
+  category: string;
+  pricePerKg: string;
+  availability: 'Tersedia' | 'Terbatas' | 'Musiman';
+  description: string;
+  imageUrl: string;
+}
+
+export interface AnnouncementItem {
+  id: string;
+  title: string;
+  date: string;
+  category: string;
+  summary: string;
+  content?: string; // isi detail pengumuman / artikel blog lengkap
+  imageUrl?: string; // gambar banner pengumuman / artikel seperti blog
+  attachmentUrl?: string;
+}
+
+export interface CmsData {
+  beranda: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    heroImageUrl: string;
+    // Header visual ekosistem laut yang bisa di-hyperlink dan diedit admin
+    heroCardTitle?: string;
+    heroCardCoords?: string;
+    heroCardLink?: string;
+    statsTitle: string;
+    statsSubtitle: string;
+    stats: StatItem[];
+  };
+  pengurusSection: {
+    title: string;
+    subtitle: string;
+    items: PengurusItem[];
+  };
+  mengenalKami: {
+    title: string;
+    subtitle: string;
+    narrative: string;
+    vision: string;
+    missions: string[];
+    imageUrl: string;
+    address: string;
+    phone: string;
+    email: string;
+  };
+  produkSection: {
+    title: string;
+    subtitle: string;
+    items: ProductItem[];
+  };
+  pengumumanSection: {
+    title: string;
+    subtitle: string;
+    items: AnnouncementItem[];
+  };
+}
 ````
-# Public assets directory
+
+## File: .eslintrc.json
+````json
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "@next/next/no-img-element": "off"
+  }
+}
+````
+
+## File: Dockerfile
+````dockerfile
+# 1. Tahap Instalasi Dependensi (Deps)
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+
+# 2. Tahap Build Aplikasi
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# 3. Tahap Runner (Ringan, Hemat RAM ~50-80MB)
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Siapkan folder data CMS agar perubahan konten tersimpan permanen
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+VOLUME ["/app/data"]
+
+CMD ["node", "server.js"]
+````
+
+## File: tsconfig.json
+````json
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
 ````
 
 ## File: src/app/api/cms/route.ts
@@ -802,117 +1326,40 @@ export async function PUT(req: NextRequest) {
 }
 ````
 
-## File: src/app/not-found.tsx
+## File: src/app/layout.tsx
 ````typescript
-import Link from 'next/link';
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import './globals.css';
 
-export default function NotFound() {
+const geistSans = localFont({
+  src: './fonts/GeistVF.woff',
+  variable: '--font-geist-sans',
+  weight: '100 900',
+});
+const geistMono = localFont({
+  src: './fonts/GeistMonoVF.woff',
+  variable: '--font-geist-mono',
+  weight: '100 900',
+});
+
+export const metadata: Metadata = {
+  title: 'Kampung Nelayan Merah Putih Oepuah - Portal Resmi Koperasi Nelayan',
+  description:
+    'Portal Resmi Komoditas & Koperasi Kampung Nelayan Merah Putih Oepuah, Kab. Timor Tengah Utara, Nusa Tenggara Timur.',
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center px-4 font-sans text-[#1D1D1F]">
-      <div className="max-w-md w-full bg-white rounded-2xl p-8 border border-black/[0.08] shadow-sm text-center">
-        <span className="text-4xl font-bold text-[#0071E3] block mb-2">404</span>
-        <h1 className="text-xl font-semibold mb-2">Halaman Tidak Ditemukan</h1>
-        <p className="text-xs text-[#86868B] mb-6">
-          Halaman yang Anda tuju tidak tersedia atau telah dipindahkan.
-        </p>
-        <Link
-          href="/"
-          className="inline-flex items-center justify-center px-5 py-2.5 rounded-full text-xs font-medium text-white bg-[#0071E3] hover:bg-[#0077ED] transition-colors"
-        >
-          Kembali ke Beranda
-        </Link>
-      </div>
-    </div>
-  );
-}
-````
-
-## File: src/components/MetricSparkline.tsx
-````typescript
-'use client';
-
-import React from 'react';
-
-// Helper generator titik angka grafik tren secara 100% otomatis dari Nilai Utama
-export function getAutoChartPoints(
-  valueStr: string,
-  pattern: 'up' | 'stable' | 'wave' = 'up',
-  manualPoints?: number[]
-): number[] {
-  if (manualPoints && manualPoints.length >= 2) return manualPoints;
-  const cleanStr = (valueStr || '').replace(',', '.');
-  const match = cleanStr.match(/-?\d+(\.\d+)?/);
-  const baseNum = match ? parseFloat(match[0]) : 100;
-  const absNum = Math.abs(baseNum) || 100;
-  const isNegative = baseNum < 0;
-
-  if (pattern === 'stable') {
-    const factors = [0.98, 1.01, 0.99, 1.02, 0.99, 1.01, 1.0];
-    return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
-  }
-  if (pattern === 'wave') {
-    const factors = [0.78, 1.12, 0.85, 1.18, 0.92, 1.08, 1.0];
-    return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
-  }
-  // 'up'
-  const factors = [0.68, 0.75, 0.82, 0.88, 0.91, 0.96, 1.0];
-  return factors.map((f) => (isNegative ? -Math.abs(absNum * f) : Number((absNum * f).toFixed(1))));
-}
-
-// Helper component untuk merender Sparkline SVG dinamis otomatis
-export function MetricSparkline({
-  value,
-  pattern = 'up',
-  points,
-  color = '#0071E3',
-  id,
-}: {
-  value: string;
-  pattern?: 'up' | 'stable' | 'wave';
-  points?: number[];
-  color?: string;
-  id: string;
-}) {
-  const data = getAutoChartPoints(value, pattern, points);
-  const width = 160;
-  const height = 40;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  const coords = data.map((val, idx) => {
-    const x = (idx / (data.length - 1)) * width;
-    const y = height - ((val - min) / range) * (height - 10) - 5;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-
-  const pathD = `M ${coords.join(' L ')}`;
-  const gradId = `sparkGrad-${id}`;
-
-  return (
-    <div className="w-full h-10 mt-3 overflow-hidden">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-        {/* Area fill */}
-        <path d={`M ${coords.join(' L ')} L ${width},${height} L 0,${height} Z`} fill={`url(#${gradId})`} />
-        {/* Line stroke */}
-        <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {/* Dot on the latest point */}
-        {coords.length > 0 && (
-          <circle
-            cx={coords[coords.length - 1].split(',')[0]}
-            cy={coords[coords.length - 1].split(',')[1]}
-            r="3"
-            fill={color}
-          />
-        )}
-      </svg>
-    </div>
+    <html lang="id">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {children}
+      </body>
+    </html>
   );
 }
 ````
@@ -1162,140 +1609,6 @@ export function saveCmsData(data: CmsData): void {
 }
 ````
 
-## File: src/types/cms.ts
-````typescript
-export interface StatItem {
-  id: string;
-  value: string; // Nilai angka / jumlah (misal: "142", "3,8", "Rp 148.500.000")
-  unit?: string; // Satuan fleksibel (misal: "Unit", "Ton", "KK", "°C", atau kosong jika sudah ada Rp di nilai)
-  label: string;
-  detail: string;
-  trendLabel?: string; // misal: "+12 unit thn ini", "+15% musim pelagis", "Sehat & Transparan"
-  trendType?: 'up' | 'down' | 'neutral';
-  trendPattern?: 'up' | 'stable' | 'wave';
-  chartData?: number[];
-}
-
-export interface PengurusItem {
-  id: string;
-  name: string;
-  role: string;
-  email?: string; // opsional: bisa diisi atau dikosongkan sebebas admin
-  phone?: string; // opsional: nomor telepon / WhatsApp pengurus
-  photoUrl: string;
-}
-
-export interface ProductItem {
-  id: string;
-  name: string;
-  latinName: string;
-  category: string;
-  pricePerKg: string;
-  availability: 'Tersedia' | 'Terbatas' | 'Musiman';
-  description: string;
-  imageUrl: string;
-}
-
-export interface AnnouncementItem {
-  id: string;
-  title: string;
-  date: string;
-  category: string;
-  summary: string;
-  content?: string; // isi detail pengumuman / artikel blog lengkap
-  imageUrl?: string; // gambar banner pengumuman / artikel seperti blog
-  attachmentUrl?: string;
-}
-
-export interface CmsData {
-  beranda: {
-    eyebrow: string;
-    title: string;
-    description: string;
-    heroImageUrl: string;
-    // Header visual ekosistem laut yang bisa di-hyperlink dan diedit admin
-    heroCardTitle?: string;
-    heroCardCoords?: string;
-    heroCardLink?: string;
-    statsTitle: string;
-    statsSubtitle: string;
-    stats: StatItem[];
-  };
-  pengurusSection: {
-    title: string;
-    subtitle: string;
-    items: PengurusItem[];
-  };
-  mengenalKami: {
-    title: string;
-    subtitle: string;
-    narrative: string;
-    vision: string;
-    missions: string[];
-    imageUrl: string;
-    address: string;
-    phone: string;
-    email: string;
-  };
-  produkSection: {
-    title: string;
-    subtitle: string;
-    items: ProductItem[];
-  };
-  pengumumanSection: {
-    title: string;
-    subtitle: string;
-    items: AnnouncementItem[];
-  };
-}
-````
-
-## File: Dockerfile
-````dockerfile
-# 1. Tahap Instalasi Dependensi (Deps)
-FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-
-# 2. Tahap Build Aplikasi
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build
-
-# 3. Tahap Runner (Ringan, Hemat RAM ~50-80MB)
-FROM node:20-alpine AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# Siapkan folder data CMS agar perubahan konten tersimpan permanen
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
-
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
-
-EXPOSE 3000
-
-VOLUME ["/app/data"]
-
-CMD ["node", "server.js"]
-````
-
 ## File: README.md
 ````markdown
 # Portal Maritim & CMS Kampung Nelayan Merah Putih (KNMP) Oepuah
@@ -1438,6 +1751,11 @@ docker compose logs -f
 
 ### 3. Pengaturan Subdomain di VPS / Cloudflare
 Middleware di `src/middleware.ts` secara otomatis mendeteksi akses melalui subdomain berawalan `admin.` atau `admin-` (contoh: `admin-oepuah.domainanda.id` atau `admin.knmp-oepuah.id`) dan mengarahkannya secara transparan ke panel pengelola tanpa perlu mengetik `/admin` di akhir URL.
+
+### 4. Pipeline CI/CD Auto-Pull & Auto-Deploy (GitHub Actions & GitLab CI)
+Proyek ini menyediakan otomatisasi deployment setiap kali ada `git push` ke branch `main` atau `master`:
+- **GitHub Actions (`.github/workflows/deploy.yml`) & GitLab CI (`.gitlab-ci.yml`):** Menjalankan pemeriksaan `npm run lint` dan `npm run build` terlebih dahulu, lalu terhubung melalui SSH ke server untuk menarik kode terbaru (`git fetch` & `git reset --hard`) sambil mencadangkan `data/cms.json`, kemudian mengeksekusi `docker compose up -d --build`.
+- **Skrip Watcher Lokal (`scripts/auto-deploy.sh` & `scripts/auto-deploy.ps1`):** Digunakan apabila server Docker berada di jaringan IP privat/lokal yang tidak dapat diakses langsung oleh SSH publik dari internet.
 ````
 
 ## File: tailwind.config.ts
@@ -1467,36 +1785,6 @@ const config: Config = {
 export default config;
 ````
 
-## File: tsconfig.json
-````json
-{
-  "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
-````
-
 ## File: src/app/admin/page.tsx
 ````typescript
 'use client';
@@ -1511,18 +1799,13 @@ import {
   Eye,
   Fish,
   Image as ImageIcon,
-  Layers,
   Lock,
   LogOut,
-  Mail,
   MapPin,
-  Phone,
   Plus,
   Save,
-  ShieldCheck,
   Trash2,
   Upload,
-  Waves,
   X,
 } from 'lucide-react';
 
@@ -3275,44 +3558,6 @@ body {
 }
 ````
 
-## File: src/app/layout.tsx
-````typescript
-import type { Metadata } from 'next';
-import localFont from 'next/font/local';
-import './globals.css';
-
-const geistSans = localFont({
-  src: './fonts/GeistVF.woff',
-  variable: '--font-geist-sans',
-  weight: '100 900',
-});
-const geistMono = localFont({
-  src: './fonts/GeistMonoVF.woff',
-  variable: '--font-geist-mono',
-  weight: '100 900',
-});
-
-export const metadata: Metadata = {
-  title: 'Kampung Nelayan Merah Putih Oepuah - Portal Resmi Koperasi Nelayan',
-  description:
-    'Portal Resmi Komoditas & Koperasi Kampung Nelayan Merah Putih Oepuah, Kab. Timor Tengah Utara, Nusa Tenggara Timur.',
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="id">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
-      </body>
-    </html>
-  );
-}
-````
-
 ## File: src/app/page.tsx
 ````typescript
 'use client';
@@ -4554,6 +4799,26 @@ export function middleware(req: NextRequest) {
 }
 ````
 
+## File: docker-compose.yml
+````yaml
+services:
+  knmp-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: knmp-oepuah:latest
+    container_name: knmp-oepuah-app
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Data Persistence: Menyimpan file JSON CMS ke folder ./data lokal di host/server
+      # sehingga perubahan konten di panel admin TIDAK HILANG saat container di-restart/update
+      - ./data:/app/data
+````
+
 ## File: next.config.mjs
 ````javascript
 /** @type {import('next').NextConfig} */
@@ -4598,24 +4863,4 @@ export default nextConfig;
     "typescript": "^5"
   }
 }
-````
-
-## File: docker-compose.yml
-````yaml
-services:
-  knmp-web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: knmp-oepuah:latest
-    container_name: knmp-oepuah-app
-    restart: unless-stopped
-    ports:
-      - "3002:3000"
-    environment:
-      - NODE_ENV=production
-    volumes:
-      # Data Persistence: Menyimpan file JSON CMS ke folder ./data lokal di host/server
-      # sehingga perubahan konten di panel admin TIDAK HILANG saat container di-restart/update
-      - ./data:/app/data
 ````

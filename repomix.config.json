@@ -11,6 +11,10 @@
   "include": [
     "src/**/*",
     "public/**/*",
+    "scripts/**/*",
+    ".github/**/*",
+    ".gitlab-ci.yml",
+    ".eslintrc.json",
     "Dockerfile",
     "docker-compose.yml",
     "next.config.mjs",
@@ -39,4 +43,3 @@
     "enableSecurityCheck": true
   }
 }
-

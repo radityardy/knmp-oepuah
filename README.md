@@ -138,3 +138,8 @@ docker compose logs -f
 
 ### 3. Pengaturan Subdomain di VPS / Cloudflare
 Middleware di `src/middleware.ts` secara otomatis mendeteksi akses melalui subdomain berawalan `admin.` atau `admin-` (contoh: `admin-oepuah.domainanda.id` atau `admin.knmp-oepuah.id`) dan mengarahkannya secara transparan ke panel pengelola tanpa perlu mengetik `/admin` di akhir URL.
+
+### 4. Pipeline CI/CD Auto-Pull & Auto-Deploy (GitHub Actions & GitLab CI)
+Proyek ini menyediakan otomatisasi deployment setiap kali ada `git push` ke branch `main` atau `master`:
+- **GitHub Actions (`.github/workflows/deploy.yml`) & GitLab CI (`.gitlab-ci.yml`):** Menjalankan pemeriksaan `npm run lint` dan `npm run build` terlebih dahulu, lalu terhubung melalui SSH ke server untuk menarik kode terbaru (`git fetch` & `git reset --hard`) sambil mencadangkan `data/cms.json`, kemudian mengeksekusi `docker compose up -d --build`.
+- **Skrip Watcher Lokal (`scripts/auto-deploy.sh` & `scripts/auto-deploy.ps1`):** Digunakan apabila server Docker berada di jaringan IP privat/lokal yang tidak dapat diakses langsung oleh SSH publik dari internet.

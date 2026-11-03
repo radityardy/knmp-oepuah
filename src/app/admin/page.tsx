@@ -10,18 +10,13 @@ import {
   Eye,
   Fish,
   Image as ImageIcon,
-  Layers,
   Lock,
   LogOut,
-  Mail,
   MapPin,
-  Phone,
   Plus,
   Save,
-  ShieldCheck,
   Trash2,
   Upload,
-  Waves,
   X,
 } from 'lucide-react';
 

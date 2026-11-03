@@ -1,0 +1,50 @@
+stages:
+  - verify
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+verify_build:
+  stage: verify
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run lint
+    - npm run build
+  only:
+    - main
+    - master
+
+deploy_server:
+  stage: deploy
+  image: alpine:3.20
+  needs:
+    - verify_build
+  before_script:
+    - apk add --no-cache openssh-client
+  script:
+    - |
+      if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+        echo "Secrets SSH_HOST / SSH_USER / SSH_PRIVATE_KEY belum diatur di GitLab CI/CD Variables."
+        exit 0
+      fi
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+      chmod 600 ~/.ssh/id_deploy
+      PORT="${SSH_PORT:-22}"
+      TARGET_DIR="${DEPLOY_PATH:-~/knmp-oepuah}"
+      ssh -i ~/.ssh/id_deploy -p "$PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" "
+        set -e
+        cd $TARGET_DIR
+        [ -f data/cms.json ] && cp data/cms.json /tmp/knmp_cms_backup.json
+        git fetch --all
+        git reset --hard origin/$CI_COMMIT_REF_NAME
+        [ -f /tmp/knmp_cms_backup.json ] && mkdir -p data && cp /tmp/knmp_cms_backup.json data/cms.json
+        docker compose up -d --build --remove-orphans
+        docker image prune -f
+      "
+  only:
+    - main
+    - master
+

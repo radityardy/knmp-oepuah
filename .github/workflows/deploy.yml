@@ -1,0 +1,93 @@
+name: CI/CD Deploy KNMP Oepuah
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 1. Tahap Validasi Lint & Build Next.js
+  verify-build:
+    name: Verify Lint & Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run ESLint & TypeScript Check
+        run: npm run lint
+
+      - name: Build Next.js Standalone
+        run: npm run build
+
+  # 2. Tahap Auto-Pull & Rebuild Docker di Server via SSH
+  deploy-ssh:
+    name: Auto-Pull & Deploy to Server (SSH)
+    needs: verify-build
+    runs-on: ubuntu-latest
+    # Hanya berjalan jika Secret SSH_HOST sudah diisi di GitHub Settings -> Secrets -> Actions
+    if: ${{ vars.ENABLE_SSH_DEPLOY != 'false' }}
+    steps:
+      - name: Deploy to Server via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '~/knmp-oepuah' }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "Info: Secrets SSH_HOST / SSH_USER / SSH_PRIVATE_KEY belum diatur di GitHub Repository."
+            echo "Silakan tambahkan di Settings -> Secrets and variables -> Actions untuk mengaktifkan auto-deploy SSH."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << EOF
+            set -e
+            echo "==> Masuk ke direktori project: $DEPLOY_PATH"
+            cd $DEPLOY_PATH
+
+            echo "==> Mencadangkan data CMS (data/cms.json) agar perubahan admin tetap aman..."
+            if [ -f data/cms.json ]; then
+              cp data/cms.json /tmp/knmp_cms_backup.json
+            fi
+
+            echo "==> Menarik pembaruan terbaru dari branch $BRANCH_NAME..."
+            git fetch --all
+            git reset --hard origin/$BRANCH_NAME
+
+            if [ -f /tmp/knmp_cms_backup.json ]; then
+              mkdir -p data
+              cp /tmp/knmp_cms_backup.json data/cms.json
+              rm -f /tmp/knmp_cms_backup.json
+            fi
+
+            echo "==> Membangun ulang & menjalankan container Docker..."
+            docker compose up -d --build --remove-orphans
+            docker image prune -f
+
+            echo "==> Deployment selesai!"
+            docker compose ps
+          EOF
+
